@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">Prompt Vault <span style="font-size:1.2rem; color:var(--text-secondary);">(AI Director)</span></div>
+<div class="glass-panel" style="padding: 32px;">
+    <h2>System Prompts Master</h2>
+    <p style="color:var(--text-secondary); margin-bottom: 24px;">Controlla il "cervello" dei copywriter AI. Nessuna stringa hardcoded.</p>
+    <div style="background:#FDFCF9; border:1px solid var(--glass-border); padding:24px; border-radius:8px;">
+        <label style="font-weight:600; font-size:0.9rem;">Prompt di Base (Luxury Editoriale)</label>
+        <textarea class="glass-input" style="height:200px; margin-top:12px; font-family:monospace; background:white; padding:16px;">
+Stai agendo come il copywriter capo di una boutique luxury. 
+ATTENZIONE: 
+- Non usare MAI le parole: "usato", "economico", "saldo". 
+- Usa sempre "pre-loved", "accessibile", "heritage".
+- Sottolinea l'unicità dell'hardware e la rarità del pellame.
+- Output rigorosamente in Italiano.
+        </textarea>
+        <button class="btn glass-btn attr-primary" style="margin-top:16px;" onclick="alert('Regole comportamentali salvate!')">Aggiorna Comportamento AI</button>
+    </div>
+</div>
+{% endblock %}

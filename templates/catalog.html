@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Catalogo Centrale <span style="font-size:1.2rem; color:var(--text-secondary);">(Live Inventory)</span></div>
+
+<div class="glass-panel" style="padding: 32px; margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+        <div style="flex-grow: 1;">
+            <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary); margin-bottom: 8px;">Master Inventory</h2>
+            <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 600px;">
+                Gestisci, ritocca e forza la sincronizzazione in tempo reale su Shopify di tutti i prodotti Validati (Ready) o Pubblicati (Published).
+            </p>
+        </div>
+        
+        <button onclick="forceSyncAll()" id="btn-sync-all" class="btn glass-btn attr-primary" style="background: var(--accent-black); border-color: var(--glass-border); white-space: nowrap; margin-left: 24px;">
+            <i class="ph ph-arrows-clockwise"></i> Sync Completo Server
+        </button>
+    </div>
+</div>
+
+<div class="section-head"><i class="ph ph-books"></i> Libreria Articoli</div>
+<div class="glass-panel" style="overflow-x: auto;">
+    <table class="inventory-table">
+        <thead>
+            <tr>
+                <th>Immagine</th>
+                <th>Brand / Modello</th>
+                <th>SKU</th>
+                <th>Prezzo (€)</th>
+                <th>Status Shopify</th>
+                <th>Azioni Singole</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td>
+                    <div style="width: 48px; height: 48px; background: rgba(0,0,0,0.05); border-radius: 8px; display:flex; align-items:center; justify-content:center;">
+                        <i class="ph ph-camera" style="font-size: 1.5rem; color: rgba(0,0,0,0.3);"></i>
+                    </div>
+                </td>
+                <td style="font-weight: 500;">{{ p.brand }}<br><span style="font-weight: 400; font-size:0.9rem; color:var(--text-secondary)">{{ p.model }}</span></td>
+                <td style="font-family: var(--font-serif); color: var(--text-secondary);">{{ p.sku }}</td>
+                <td style="font-family: var(--font-serif);">
+                    <input type="number" id="catalog-price-{{ p.id }}" value="{{ p.price or 0 }}" class="glass-input" style="width: 100px; padding: 4px; font-size: 0.9rem;">
+                </td>
+                <td><span class="badge {{ p.status|lower }}">{{ p.status }}</span></td>
+                <td>
+                    <button class="btn glass-btn" onclick="saveAndSync({{ p.id }})" style="padding: 6px 12px; font-size: 0.85rem;" id="btn-ss-{{ p.id }}">
+                        <i class="ph ph-cloud-arrow-up"></i> Salva & Aggiorna Live
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px;">Nessun prodotto validato pronto per il web. Clicca su Atelier Lab.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function saveAndSync(id) {
+    let btn = document.getElementById('btn-ss-' + id);
+    let price = document.getElementById('catalog-price-' + id).value;
+    
+    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i>";
+    btn.disabled = true;
+
+    fetch(`/api/catalog/sync/${id}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ price: price })
+    }).then(res => res.json()).then(data => {
+        btn.innerHTML = "<i class='ph ph-check'></i> Aggiornato";
+        btn.style.color = "var(--accent-green)";
+        setTimeout(() => {
+            btn.innerHTML = "<i class='ph ph-cloud-arrow-up'></i> Salva & Aggiorna Live";
+            btn.style.color = "var(--text-primary)";
+            btn.disabled = false;
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px;">
+    <div>
+        <h1 class="page-title" style="margin-bottom: 8px;">Atelier Executive Overview</h1>
+        <p style="color: var(--text-secondary); font-size: 0.95rem;">Monitoraggio operativo unificato del Product Information Management system.</p>
+    </div>
+    
+    <div style="display: flex; gap: 16px;">
+        <div style="padding: 12px 24px; background: #FFFFFF; border: 1px solid var(--glass-border); border-radius: 6px; text-align: right;">
+            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Session API Cost</div>
+            <div style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--text-primary);">${{ kpi_cost or 0 }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- LINEAR METRICS BAR -->
+<div style="display: flex; border: 1px solid var(--glass-border); background: #FFFFFF; border-radius: 8px; margin-bottom: 40px; overflow: hidden;">
+    
+    <div style="flex: 1; padding: 24px; border-right: 1px solid var(--glass-border);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Master Inventory</span>
+            <i class="ph ph-stack" style="color: var(--text-secondary);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-primary); margin-top: 12px; line-height: 1;">{{ kpi_total }}</div>
+    </div>
+    
+    <div style="flex: 1; padding: 24px; border-right: 1px solid var(--glass-border);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Articoli In Lab</span>
+            <i class="ph ph-flask" style="color: var(--accent-gold);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-primary); margin-top: 12px; line-height: 1;">{{ kpi_validating }}</div>
+    </div>
+    
+    <div style="flex: 1; padding: 24px; border-right: 1px solid var(--glass-border);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Live Shopify</span>
+            <i class="ph ph-globe" style="color: var(--accent-green);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-primary); margin-top: 12px; line-height: 1;">{{ kpi_published }}</div>
+    </div>
+
+    <div style="flex: 1; padding: 24px; background: rgba(139, 44, 44, 0.02);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--accent-red); text-transform: uppercase; letter-spacing: 0.5px;">Errori / Timeout</span>
+            <i class="ph ph-warning-circle" style="color: var(--accent-red);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--accent-red); margin-top: 12px; line-height: 1;">{{ kpi_errors }}</div>
+    </div>
+</div>
+
+<!-- LATEST ACTIVITY TABLE -->
+<div class="glass-panel" style="padding: 32px 0;">
+    <div class="section-head" style="margin: 0 32px 24px 32px;"><i class="ph ph-list-dashes" style="margin-right: 8px;"></i> Attività Recenti Inventario</div>
+    
+    <table class="inventory-table" style="width: 100%;">
+        <thead>
+            <tr>
+                <th style="padding-left: 32px;">Item ID</th>
+                <th>Brand / Modello</th>
+                <th>SKU</th>
+                <th>Prezzo Stimato</th>
+                <th>Pipeline Status</th>
+                <th style="padding-right: 32px;">Costo NLP</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in recent_products %}
+            <tr>
+                <td style="padding-left: 32px; font-family: var(--font-serif); color: var(--text-secondary);">#{{ item.id }}</td>
+                <td style="font-weight: 500;">{{ item.brand }} {{ item.model }}</td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem;">{{ item.sku }}</td>
+                <td style="font-family: var(--font-serif);">{% if item.price %}€{{ item.price }}{% else %}-{% endif %}</td>
+                <td>
+                    {% if item.status.value == 'draft' %}
+                        <span class="badge draft">Draft</span>
+                    {% elif item.status.value == 'processing' %}
+                        <span class="badge processing">Processing</span>
+                    {% elif item.status.value == 'error' %}
+                        <span class="badge error">Timeout</span>
+                    {% elif item.status.value == 'validating' %}
+                        <span class="badge validating">In Lab</span>
+                    {% elif item.status.value == 'ready' %}
+                        <span class="badge ready">Ready</span>
+                    {% elif item.status.value == 'published' %}
+                        <span class="badge published">Live</span>
+                    {% endif %}
+                </td>
+                <td style="padding-right: 32px; color: var(--text-secondary); font-size: 0.85rem;">${{ "%.3f"|format(item.api_cost_usd or 0) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="padding: 40px 32px; text-align: center; color: var(--text-secondary);">
+                    Database vergine. Avvia l'ingestione tramite The Loom per alimentare la directory.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

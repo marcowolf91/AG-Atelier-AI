@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title" style="margin-bottom: 24px;">The Muse <span style="font-size:1.2rem; color:var(--text-secondary);">(Interactive Editor)</span></div>
+
+<div style="display: flex; gap: 24px; height: calc(100vh - 180px);">
+    
+    <!-- LEFT: List of items to process -->
+    <div style="width: 35%; display: flex; flex-direction: column; gap: 16px;">
+        
+        <!-- Settings Panel -->
+        <div class="glass-panel" style="padding: 24px; flex-shrink: 0;">
+            <div style="font-weight: 600; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 16px; color: var(--text-secondary);">Configurazione Narrativa</div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div class="input-group">
+                    <label>Provider LLM</label>
+                    <select class="glass-input" id="llm-model">
+                        <option value="gpt4">OpenAI GPT-4o</option>
+                        <option value="claude">Anthropic Claude</option>
+                        <option value="llama">LLaMA Locale (Free)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Tono di Voce</label>
+                    <select class="glass-input" id="muse-tone">
+                        <option value="luxury">Luxury Editoriale</option>
+                        <option value="tech">Tecnico (Materiali)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue List -->
+        <div class="glass-panel" style="flex: 1; overflow-y: auto; padding: 16px;">
+            <div style="font-weight: 600; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 16px; color: var(--text-secondary); padding-left: 8px;">Coda d'Attesa ({{ products|length }})</div>
+            
+            {% for p in products %}
+            <div class="muse-item-row" id="row-{{ p.id }}" onclick="selectProduct({{ p.id }}, '{{ p.brand|replace(\"'\", \"\\\\'\") }}', '{{ p.model|replace(\"'\", \"\\\\'\") }}')" style="padding: 16px; border-bottom: 1px solid var(--glass-border); border-left: 3px solid transparent; cursor: pointer; transition: background 0.2s, border-left 0.2s; border-radius: 8px;">
+                <div style="font-weight: 500; font-size: 0.95rem;">{{ p.brand }} - {{ p.model }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; font-family: var(--font-serif);">SKU: {{ p.sku }}</div>
+            </div>
+            {% else %}
+            <div style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 0.9rem;">
+                Nessun prodotto in coda per The Muse.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- RIGHT: The Interactive Editor -->
+    <div class="glass-panel" id="editor-panel" style="flex: 1; display: flex; flex-direction: column; padding: 32px; opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+                <h2 id="editor-title" style="font-family: var(--font-serif); font-weight: 400; font-size: 1.8rem; margin-bottom: 4px;">Seleziona un Articolo</h2>
+                <div id="editor-subtitle" style="font-size: 0.85rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">-</div>
+            </div>
+            <button id="btn-generate" onclick="generateText()" class="btn glass-btn attr-primary" style="background: var(--accent-black);">
+                <i class="ph ph-magic-wand"></i> Genera Bozza AI
+            </button>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; position: relative;">
+            <textarea id="editor-textarea" style="flex: 1; width: 100%; resize: none; border: 1px solid var(--glass-border); border-radius: 8px; padding: 24px; font-family: var(--font-serif); font-size: 1.1rem; line-height: 1.8; color: var(--text-primary); outline: none; background: #FAFAFA; transition: border-color 0.3s ease;" placeholder="Il testo generato dall'AI apparirà qui. Potrai modificarlo liberamente prima di approvarlo."></textarea>
+            
+            <div id="loading-overlay" style="position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(250,250,250,0.8); display: none; align-items: center; justify-content: center; border-radius: 8px; backdrop-filter: blur(4px);">
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--text-secondary);">
+                    <i class="ph ph-spinner ph-spin" style="font-size: 2rem;"></i>
+                    <span style="font-size: 0.9rem; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Scrittura in corso...</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px;">
+            <div style="font-size: 0.75rem; color: var(--text-secondary);">Costo API Stimato: <span style="color:var(--text-primary); font-weight:600;">$0.001</span></div>
+            <div style="display: flex; gap: 16px;">
+                <button class="btn glass-btn" onclick="document.getElementById('editor-textarea').value = '';" style="color: var(--accent-red); border-color: transparent;">Svuota</button>
+                <button onclick="approveAndSave()" class="btn glass-btn" style="border-color: var(--accent-green); color: var(--accent-green);">
+                    <i class="ph ph-check"></i> Salva & Approva
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<style>
+.muse-item-row.active {
+    background: rgba(0,0,0,0.03);
+    border-left: 3px solid var(--accent-black) !important;
+}
+</style>
+
+<script>
+let currentProductId = null;
+
+function selectProduct(id, brand, model) {
+    currentProductId = id;
+    
+    // UI Update Left Menu
+    document.querySelectorAll('.muse-item-row').forEach(el => el.classList.remove('active'));
+    document.getElementById('row-' + id).classList.add('active');
+    
+    // UI Update Editor Panel
+    const panel = document.getElementById('editor-panel');
+    panel.style.opacity = '1';
+    panel.style.pointerEvents = 'auto';
+    
+    document.getElementById('editor-title').innerText = brand + ' ' + model;
+    document.getElementById('editor-subtitle').innerText = 'Id Articolo: ' + id;
+    
+    // Clear textarea for new generation
+    document.getElementById('editor-textarea').value = '';
+}
+
+function generateText() {
+    if(!currentProductId) return;
+    
+    const tone = document.getElementById('muse-tone').value;
+    const llm = document.getElementById('llm-model').value;
+    
+    // Show loader
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.getElementById('btn-generate').disabled = true;
+    
+    // Simulate generation time depending on model
+    setTimeout(() => {
+        let mockText = "";
+        const title = document.getElementById('editor-title').innerText;
+        
+        if(tone === 'luxury') {
+            mockText = `Una magistrale interpretazione firmata ${title}, perfetta per elevare ogni collezione personale.\n\nQuesto pezzo incarna il sublime equilibrio tra storicità e tendenza, presentandosi in condizioni eccellenti (pre-loved). Realizzato con maestria artigianale e firmato dalle iconiche finiture hardware originali, questo accessorio non è una semplice borsa, ma una dichiarazione d'intenti e stile senza tempo.\n\nL'interno capiente e la struttura rigorosa garantiscono un lusso discreto, ideale per l'individuo sofisticato che cerca un investimento sicuro nell'alta moda.`;
+        } else {
+            mockText = `Modello: ${title}\nCollezione Classica\nHardware: Metallo logato\n\nDesign funzionale con struttura semi-rigida. Le specifiche dei materiali garantiscono altissima durabilità e resistenza, mantenendo la silhouette intatta nel tempo. Articolo testato e verificato nel nostro laboratorio per garantire i più alti standard qualitativi associati all'acquisto dell'usato di lusso.`;
+        }
+        
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('editor-textarea').value = mockText;
+        document.getElementById('btn-generate').disabled = false;
+        
+    }, 1500);
+}
+
+function approveAndSave() {
+    if(!currentProductId) return;
+    const desc = document.getElementById('editor-textarea').value;
+    if(!desc.trim()) {
+        alert("Genera o scrivi un testo prima di approvare.");
+        return;
+    }
+    
+    fetch(`/api/muse/save/${currentProductId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            description: desc,
+            api_cost: 0.001 // mocked injection to Dash API Costs
+        })
+    }).then(res => res.json()).then(data => {
+        if(data.status === 'ok') {
+            // Remove from list
+            const row = document.getElementById('row-' + currentProductId);
+            row.style.display = 'none';
+            
+            // Reset Editor
+            const panel = document.getElementById('editor-panel');
+            panel.style.opacity = '0.5';
+            panel.style.pointerEvents = 'none';
+            document.getElementById('editor-title').innerText = "Salvato con Successo";
+            document.getElementById('editor-textarea').value = "";
+            currentProductId = null;
+        }
+    });
+}
+</script>
+
+{% endblock %}

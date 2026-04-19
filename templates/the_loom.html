@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">The Loom <span style="font-size:1.2rem; color:var(--text-secondary);">(Data Inbound)</span></div>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--glass-border);">
+    <div>
+        <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary);">Sincronizzazione Sorgenti</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">Importa le nuove acquisizioni da Google Sheets e Drive.</p>
+    </div>
+    <button onclick="startSync()" id="btn-sync" class="btn glass-btn attr-primary">
+        <i class="ph ph-arrows-clockwise" id="sync-icon"></i> Start Sync
+    </button>
+</div>
+
+<div id="sync-progress-container" style="display: none; width: 100%; max-width: 400px; margin-bottom: 32px;">
+    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px;">
+        <span style="font-weight: 600; color: var(--accent-black);">In Sync...</span>
+        <span id="sync-perc">0%</span>
+    </div>
+    <div style="height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; width: 100%;">
+        <div id="sync-bar" style="height: 100%; width: 0%; background: var(--accent-black); transition: width 0.3s ease;"></div>
+    </div>
+</div>
+
+<div class="section-head"><i class="ph ph-list-dashes"></i> Inbox Recenti</div>
+<div class="glass-panel" style="overflow-x: auto;">
+    <table class="inventory-table">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Brand</th>
+                <th>Modello</th>
+                <th>SKU</th>
+                <th>Azione</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td><span class="badge {{ p.status|lower }}">{{ p.status }}</span></td>
+                <td style="font-weight: 500;">{{ p.brand }}</td>
+                <td>{{ p.model }}</td>
+                <td style="font-family: var(--font-serif); color: var(--text-secondary);">{{ p.sku }}</td>
+                <td>
+                    <button class="btn glass-btn" style="padding: 4px 12px; font-size: 0.8rem;">Dettagli</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-secondary);">Nessun prodotto nel database.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function startSync() {
+        let btn = document.getElementById("btn-sync");
+        let icon = document.getElementById("sync-icon");
+        let container = document.getElementById("sync-progress-container");
+        let bar = document.getElementById("sync-bar");
+        let perc = document.getElementById("sync-perc");
+
+        btn.disabled = true;
+        icon.classList.add("ph-spin");
+        container.style.display = "block";
+        
+        let progress = 0;
+        let pInt = setInterval(() => {
+            progress += 10;
+            bar.style.width = progress + "%";
+            perc.innerText = progress + "%";
+            
+            if(progress >= 100) {
+                clearInterval(pInt);
+                fetch("/api/sync", {method: "POST"}).then(() => {
+                    setTimeout(() => window.location.reload(), 600);
+                });
+            }
+        }, 150);
+    }
+</script>
+{% endblock %}

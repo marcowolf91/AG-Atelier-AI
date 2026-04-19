@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">The Harvester <span style="font-size:1.2rem; color:var(--text-secondary);">(AI Enrichment)</span></div>
+
+<div class="glass-panel" style="padding: 32px; margin-bottom: 32px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+        <div style="flex-grow: 1;">
+            <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary); margin-bottom: 8px;">Motore Semantico & Web Search</h2>
+            <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 600px; margin-bottom: 24px;">
+                Personalizza l'intensità della ricerca per isolare i prodotti.
+            </p>
+            
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <div class="input-group">
+                    <label style="font-size: 0.8rem; color: var(--text-secondary);">Profondità SERP</label>
+                    <select class="glass-input" id="serp-depth" style="padding: 8px 12px;">
+                        <option value="top3">Top 3 (Veloce)</option>
+                        <option value="top10">Top 10 Google</option>
+                        <option value="deep">Deep Search (Siti Multipli)</option>
+                    </select>
+                </div>
+                <div class="input-group" style="padding-top: 24px;">
+                    <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 0.9rem;">
+                        <input type="checkbox" id="include-official" checked>
+                        <span class="checkmark"></span>
+                        Forza ricerca Sito Ufficiale (se disponibile)
+                    </label>
+                </div>
+                <div class="input-group" style="padding-top: 24px;">
+                    <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 0.9rem;">
+                        <input type="checkbox" id="auto-tag">
+                        <span class="checkmark"></span>
+                        Auto-Assegnazione Tag in fase di scrap
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <button onclick="startHarvester()" id="btn-harvest" class="btn glass-btn attr-primary" style="background: var(--accent-gold); border-color: var(--accent-gold); white-space: nowrap; margin-left: 24px;">
+            <i class="ph ph-lightning"></i> Avvia AI Enrichment
+        </button>
+        <button onclick="alert('Recupero task in timeout / errore in corso...');" class="btn glass-btn" style="border-color: var(--accent-red); color: var(--accent-red); white-space: nowrap; margin-left: 12px;" title="Riavvia task falliti">
+            <i class="ph ph-arrow-counter-clockwise"></i> Retry Blocchi
+        </button>
+    </div>
+
+    <!-- Harvester Console -->
+    <div class="console-box" id="harvester-console" style="height: 300px; overflow-y: auto;">
+        <div>[Harvester] Standby. In attesa di elaborazione batch...</div>
+    </div>
+</div>
+
+<script>
+    let pollInterval;
+    function startHarvester() {
+        let btn = document.getElementById('btn-harvest');
+        btn.disabled = true;
+
+        fetch("/api/harvester/start", {method: "POST"})
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'started') {
+                    document.getElementById('harvester-console').innerHTML = "<div>Avvio Harvester asincrono in background...</div>";
+                    startPollingLogs();
+                }
+            }).catch(e => btn.disabled = false);
+    }
+
+    function startPollingLogs() {
+        if (pollInterval) clearInterval(pollInterval);
+        
+        pollInterval = setInterval(() => {
+            fetch("/api/harvester/logs")
+                .then(res => res.json())
+                .then(data => {
+                    let consoleBox = document.getElementById('harvester-console');
+                    if (data.logs && data.logs.length > 0) {
+                        consoleBox.innerHTML = "";
+                        data.logs.forEach(log => {
+                            let div = document.createElement("div");
+                            div.style.marginBottom = "6px";
+                            div.innerText = "> " + log;
+                            consoleBox.appendChild(div);
+                        });
+                        consoleBox.scrollTop = consoleBox.scrollHeight;
+                    }
+                });
+        }, 1000);
+    }
+</script>
+{% endblock %}

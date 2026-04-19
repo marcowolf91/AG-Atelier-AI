@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atelier AI | {{ title | default('Dashboard') }}</title>
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Sfondo animato -->
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <i class="ph ph-sparkle"></i>
+                <span>Atelier AI</span>
+            </div>
+            
+            <div class="nav-menu">
+                <div class="sidebar-category">Monitoraggio</div>
+                <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+                    <i class="ph ph-squares-four"></i>
+                    <span>Overview</span>
+                </a>
+                <a href="/engine-room" class="nav-item {% if active_page == 'engine_room' %}active{% endif %}">
+                    <i class="ph ph-sliders"></i>
+                    <span>Engine Room</span>
+                </a>
+                <a href="/system-logs" class="nav-item {% if active_page == 'system_logs' %}active{% endif %}">
+                    <i class="ph ph-terminal"></i>
+                    <span>System Logs</span>
+                </a>
+
+                <div class="sidebar-category">Moduli Dati (Loom)</div>
+                <a href="/the-loom" class="nav-item {% if active_page == 'the_loom' %}active{% endif %}">
+                    <i class="ph ph-database"></i>
+                    <span>Data Import</span>
+                </a>
+                <a href="/loom-mapping" class="nav-item {% if active_page == 'loom_mapping' %}active{% endif %}">
+                    <i class="ph ph-tree-structure"></i>
+                    <span>Mapping Regole</span>
+                </a>
+
+                <div class="sidebar-category">Moduli AI</div>
+                <a href="/the-harvester" class="nav-item {% if active_page == 'the_harvester' %}active{% endif %}">
+                    <i class="ph ph-cpu"></i>
+                    <span>Harvester (Ricerca)</span>
+                </a>
+                <a href="/the-muse" class="nav-item {% if active_page == 'the_muse' %}active{% endif %}">
+                    <i class="ph ph-pen-nib"></i>
+                    <span>The Muse (AI Writer)</span>
+                </a>
+                <a href="/prompt-vault" class="nav-item {% if active_page == 'prompt_vault' %}active{% endif %}">
+                    <i class="ph ph-brain"></i>
+                    <span>Prompt Vault</span>
+                </a>
+
+                <div class="sidebar-category">Inventario & Lab</div>
+                <a href="/media-vault" class="nav-item {% if active_page == 'media_vault' %}active{% endif %}">
+                    <i class="ph ph-images"></i>
+                    <span>Media Vault</span>
+                </a>
+                <a href="/atelier-lab" class="nav-item {% if active_page == 'atelier_lab' %}active{% endif %}">
+                    <i class="ph ph-flask"></i>
+                    <span>Atelier Lab (Validazione)</span>
+                </a>
+                <a href="/catalog" class="nav-item {% if active_page == 'catalog' %}active{% endif %}">
+                    <i class="ph ph-books"></i>
+                    <span>Master Catalog</span>
+                </a>
+
+                <div class="sidebar-category">Shopify Sync</div>
+                <a href="/shopify-cloud" class="nav-item {% if active_page == 'shopify_cloud' %}active{% endif %}">
+                    <i class="ph ph-cloud-arrow-up"></i>
+                    <span>Sync Bridge</span>
+                </a>
+                <a href="/shopify-routing" class="nav-item {% if active_page == 'shopify_routing' %}active{% endif %}">
+                    <i class="ph ph-git-branch"></i>
+                    <span>Routing Rules</span>
+                </a>
+            </div>
+
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <header class="topbar glass-panel">
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Cerca SKU, Brand, Modello...">
+                </div>
+                <!-- Mini LED indicator globale -->
+                <div class="system-status-pill glass-panel {% if all_systems_go %}go{% else %}warn{% endif %}">
+                    <div class="status-led {% if all_systems_go %}green{% else %}red{% endif %}"></div>
+                    <span style="font-size: 0.8rem;">
+                        {% if all_systems_go %}Sistemi OK{% else %}Setup API Richiesto{% endif %}
+                    </span>
+                </div>
+                <div class="actions" style="margin-left: auto;">
+                    <button class="btn glass-btn"><i class="ph ph-bell"></i></button>
+                    <button class="btn glass-btn attr-primary">New Item</button>
+                    
+                    <div class="user-profile" style="margin-left: 24px; padding-left: 24px; border-left: 1px solid var(--glass-border); display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                        <div class="avatar" style="width: 36px; height: 36px; border-radius: 50%; background: var(--bg-color); border: 1px solid var(--glass-border); color: var(--text-primary); display: flex; align-items: center; justify-content: center; font-size: 1rem;">
+                            <i class="ph ph-user"></i>
+                        </div>
+                        <span style="font-weight: 500; font-size: 0.9rem; color: var(--text-primary);">System Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+</body>
+</html>

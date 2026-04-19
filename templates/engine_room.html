@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Engine Room & Passport</h1>
+<p style="color: var(--text-secondary); margin-bottom: 2rem;">Configura le connessioni API e i provider esterni necessari al funzionamento del workflow AI.</p>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    
+    <!-- Modulo Google OAuth -->
+    <div class="glass-panel" style="padding: 24px;">
+        <h2 style="font-size: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+            <i class="ph ph-google-logo" style="margin-right: 8px;"></i>Connessione Google Workspace
+        </h2>
+        
+        {% if error_msg == "secrets_missing" %}
+        <div style="background: var(--accent-red); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
+            File <b>client_secrets.json</b> non trovato. Scaricalo dalla Cloud Console e inseriscilo nella cartella root.
+        </div>
+        {% elif error_msg == "auth_failed" %}
+        <div style="background: var(--accent-red); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
+            Errore di autenticazione API. Controlla il log o riprova.<br>
+            <span style="font-size: 0.8rem; opacity: 0.8;">[Dettaglio: {{ request.query_params.get('detail', 'Nessun dettaglio') }}]</span>
+        </div>
+        {% endif %}
+        
+        <div style="background: #FAFAFA; border: 1px solid rgba(182,141,64,0.3); border-left: 3px solid var(--accent-gold); padding: 16px; border-radius: 8px; margin-bottom: 24px; font-size: 0.85rem; color: var(--text-secondary);">
+            <strong style="color: var(--text-primary); display: block; margin-bottom: 8px;"><i class="ph ph-warning-circle" style="color: var(--accent-gold);"></i> Rilevi errore "Access Blocked (redirect_uri_mismatch)"?</strong>
+            Per motivi di sicurezza, Google non ti farà accedere se non registri l'indirizzo esatto dell'applicazione.<br><br>
+            Nella Google Cloud Console vai in <strong>Credenziali</strong> > <strong>ID client Web</strong>, scendi a <em>"URI di reindirizzamento autorizzati"</em> e clicca "+ AGGIUNGI URI". Poi incolla questo indirizzo esatto:
+            <div style="background: #FFF; padding: 8px 12px; border: 1px solid var(--glass-border); border-radius: 4px; font-family: monospace; color: var(--text-primary); margin-top: 8px; user-select: all; font-size: 0.9rem;">
+                <script>document.write(window.location.protocol + "//" + window.location.host + "/auth/google/callback");</script>
+            </div>
+            <p style="margin-top: 8px; font-size: 0.8rem;">Salva il pannello Google e riprova a connetterti qui sotto.</p>
+        </div>
+        
+        {% if success_msg == "google_connected" %}
+        <div style="background: var(--accent-green); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
+            Account Google connesso correttamente al Workspace.
+        </div>
+        {% endif %}
+
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+            Il sistema richiede l'accesso a Google Sheets (lettura/scrittura) e Google Drive (gestione file/rinomina) per il core data sync.
+        </p>
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="status-led {% if google_connected %}green{% else %}red{% endif %}"></div>
+                <span>Stato Token Google: <strong>{% if google_connected %}CONNESSO{% else %}SCOLLEGATO{% endif %}</strong></span>
+            </div>
+            {% if google_connected %}
+                <span class="badge ready" style="padding: 10px 20px;"><i class="ph ph-check"></i> Sicuro</span>
+            {% else %}
+                <button onclick="window.open('/auth/google/login', 'GoogleAuth', 'width=500,height=600');" class="btn glass-btn attr-primary" style="text-decoration: none;">Connetti Account</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Modulo API Keys -->
+    <div class="glass-panel" style="padding: 24px;">
+        <h2 style="font-size: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+            <i class="ph ph-key" style="margin-right: 8px;"></i>Smart Auth Vault
+        </h2>
+        
+        <form method="POST" action="/api/settings/keys" style="display: flex; flex-direction: column; gap: 16px;">
+            
+            <div class="input-group">
+                <label>OpenAI API Key</label>
+                <div style="display: flex; gap: 8px;">
+                    <div class="status-led {% if auth_status.openai %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
+                    <input type="password" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}">
+                </div>
+            </div>
+            
+            <div class="input-group">
+                <label>Anthropic API Key</label>
+                <div style="display: flex; gap: 8px;">
+                    <div class="status-led {% if auth_status.anthropic %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
+                    <input type="password" name="anthropic" placeholder="sk-ant-..." class="glass-input" value="{{ auth_status.anthropic_val or '' }}">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Google Gemini API Key</label>
+                <div style="display: flex; gap: 8px;">
+                    <div class="status-led {% if auth_status.gemini %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
+                    <input type="password" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}">
+                </div>
+            </div>
+            
+            <div class="input-group">
+                <label>Serper.dev Key</label>
+                <div style="display: flex; gap: 8px;">
+                    <div class="status-led {% if auth_status.serper %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
+                    <input type="password" name="serper" placeholder="Token per ricerca web" class="glass-input" value="{{ auth_status.serper_val or '' }}">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Shopify Admin Token & URL</label>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <div class="status-led {% if auth_status.shopify %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
+                    <input type="password" name="shopify_token" placeholder="shpat_..." class="glass-input" value="{{ auth_status.shopify_token_val or '' }}">
+                </div>
+                <div style="display: flex; gap: 8px; margin-left: 18px;">
+                    <input type="text" name="shopify_url" placeholder="iltuostore.myshopify.com" class="glass-input" value="{{ auth_status.shopify_url_val or '' }}">
+                </div>
+            </div>
+            
+            <button type="submit" class="btn glass-btn" style="align-self: flex-end; margin-top: 8px; color: var(--accent-green);">
+                <i class="ph ph-floppy-disk"></i> Salva Chiavi
+            </button>
+        </form>
+    </div>
+
+</div>
+
+{% endblock %}
