@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Tag Central <span style="font-size:1.2rem; color:var(--text-secondary);">(Attribute Manager)</span></div>
+
+<div class="glass-panel" style="margin-bottom: 24px; padding: 20px; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h2 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Gestone Architettura Catalogo</h2>
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">Organizza i tag per Genere, Tipologia e Materiale per alimentare le Smart Collections di Shopify.</p>
+    </div>
+    <div style="display: flex; gap: 12px;">
+        <div class="badge" style="background: var(--accent-gold)10; color: var(--accent-gold); padding: 8px 16px; border: 1px solid var(--accent-gold)30;">
+            <i class="ph ph-tag"></i> {{ tags|length }} Tag Rilevati
+        </div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px;">
+    {% for tag_name, products in tags %}
+    <div class="glass-panel tag-card" id="tag-card-{{ loop.index }}" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--accent-black); margin-bottom: 4px;" id="tag-title-{{ loop.index }}">{{ tag_name }}</h3>
+                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase;">{{ products|length }} Prodotti Associati</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="renameTagPrompt('{{ tag_name }}')" class="btn glass-btn" style="padding: 6px; font-size: 1.1rem;" title="Rinomina Globale"><i class="ph ph-pencil-simple"></i></button>
+                <button onclick="deleteTagPrompt('{{ tag_name }}')" class="btn glass-btn" style="padding: 6px; font-size: 1.1rem; color: var(--accent-red);"><i class="ph ph-trash"></i></button>
+            </div>
+        </div>
+
+        <!-- Visual Audit (Thumbnails) -->
+        <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.05);">
+            {% for p in products %}
+            <div class="product-thumb-mini" title="{{ p.brand }} {{ p.model }}">
+                {% if p.thumb %}
+                <img src="{{ p.thumb }}" style="width: 100%; height: 100%; object-fit: cover;">
+                {% else %}
+                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #f8f8f8; color: #ccc;">
+                    <i class="ph ph-image-square"></i>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+            Esempi: <strong>{{ products[0].brand }}</strong> {{ products[0].model }}
+        </div>
+    </div>
+    {% else %}
+    <div style="grid-column: 1/-1; padding: 100px; text-align: center; color: var(--text-secondary);">
+        <i class="ph ph-tag-slash" style="font-size: 3rem; margin-bottom: 16px;"></i>
+        <p>Nessun tag trovato nel catalogo. Avvia l'arricchimento AI per generarli.</p>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+.tag-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid var(--glass-border);
+}
+.tag-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--glass-shadow-heavy);
+    border-color: var(--accent-gold)40;
+}
+.product-thumb-mini {
+    width: 45px;
+    height: 45px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #eee;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+</style>
+
+<script>
+async function renameTagPrompt(name) {
+    const newName = prompt(`Rinomina il tag "${name}" in tutto il catalogo:`, name);
+    if (!newName || newName === name) return;
+
+    try {
+        const res = await fetch('/api/tags/rename', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ old_name: name, new_name: newName })
+        });
+        const data = await res.json();
+        if(data.status === 'ok') {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    } catch(e) { alert("Errore di connessione"); }
+}
+
+async function deleteTagPrompt(name) {
+    if (!confirm(`Sei sicuro di voler eliminare il tag "${name}" da TUTTI i prodotti?`)) return;
+
+    try {
+        const res = await fetch('/api/tags/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: name })
+        });
+        const data = await res.json();
+        if(data.status === 'ok') {
+            location.reload();
+        } else {
+            alert(data.error);
+        }
+    } catch(e) { alert("Errore di connessione"); }
+}
+</script>
+{% endblock %}

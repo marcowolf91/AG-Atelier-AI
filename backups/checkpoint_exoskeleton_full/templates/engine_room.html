@@ -1,0 +1,719 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Engine Room & Passport</h1>
+<p style="color: var(--text-secondary); margin-bottom: 2rem;">Configura le connessioni API e i provider esterni necessari al funzionamento del workflow AI.</p>
+
+<div style="display: flex; flex-direction: column; gap: 32px;">
+    
+    <!-- Modulo Google OAuth -->
+    <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.4);">
+        <h2 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+            <i class="ph ph-google-logo" style="margin-right: 8px;"></i>Connessione Google Workspace
+        </h2>
+        
+        {% if error_msg == "secrets_missing" %}
+        <div style="background: var(--accent-red); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
+            File <b>client_secrets.json</b> non trovato. Scaricalo dalla Cloud Console e inseriscilo nella cartella root.
+        </div>
+        {% endif %}
+        
+        {% if not google_connected %}
+        <div style="background: #FAFAFA; border: 1px solid rgba(182,141,64,0.3); border-left: 3px solid var(--accent-gold); padding: 16px; border-radius: 8px; margin-bottom: 24px; font-size: 0.85rem; color: var(--text-secondary);">
+            <strong style="color: var(--text-primary); display: block; margin-bottom: 8px;"><i class="ph ph-warning-circle" style="color: var(--accent-gold);"></i> Rilevi errore "Access Blocked (redirect_uri_mismatch)"?</strong>
+            Per motivi di sicurezza, Google non ti farà accedere se non registri l'indirizzo esatto dell'applicazione.<br><br>
+            Nella Google Cloud Console vai in <strong>Credenziali</strong> > <strong>ID client Web</strong>, scendi a <em>"URI di reindirizzamento autorizzati"</em> e clicca "+ AGGIUNGI URI". Poi incolla questo indirizzo esatto:
+            <div style="background: #FFF; padding: 8px 12px; border: 1px solid var(--glass-border); border-radius: 4px; font-family: monospace; color: var(--text-primary); margin-top: 8px; user-select: all; font-size: 0.9rem;">
+                <script>document.write(window.location.protocol + "//" + window.location.host + "/auth/google/callback");</script>
+            </div>
+            <p style="margin-top: 8px; font-size: 0.8rem;">Salva il pannello Google e riprova a connetterti qui sotto.</p>
+        </div>
+        {% endif %}
+        
+
+
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+            Il sistema richiede l'accesso a Google Sheets (lettura/scrittura) e Google Drive (gestione file/rinomina) per il core data sync.
+        </p>
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="status-led {% if google_connected %}green{% else %}red{% endif %}"></div>
+                <span>Stato Token Google: <strong>{% if google_connected %}CONNESSO{% else %}SCOLLEGATO{% endif %}</strong></span>
+            </div>
+            {% if google_connected %}
+                <button onclick="window.location.href='/auth/google/login'" class="btn glass-btn" style="border-color: transparent; color: var(--text-secondary); text-decoration: underline; background: transparent;"><i class="ph ph-arrows-clockwise"></i> Rinnova Token</button>
+            {% else %}
+                <button onclick="window.open('/auth/google/login', 'GoogleAuth', 'width=500,height=600');" class="btn glass-btn attr-primary" style="text-decoration: none;">Connetti Account</button>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Modulo Shopify -->
+    <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.4); border-left: 3px solid var(--accent-green);">
+        <h2 style="font-size: 1.2rem; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+            <i class="ph ph-shopping-bag" style="margin-right: 8px;"></i>Connessione Piattaforma Shopify
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+            Inserisci il Token amministratore (Admin API) e lo store URL per abilitare l'export automatico e l'aggiornamento immagini.
+        </p>
+        
+        <form method="POST" action="/api/settings/keys" style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05);">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <input type="password" name="shopify_token" placeholder="Shopify Admin Token (shpat_...)" class="glass-input" value="{{ auth_status.shopify_token_val or '' }}" style="flex: 1; min-width: 200px;">
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
+                <input type="text" name="shopify_url" placeholder="iltuostore.myshopify.com" class="glass-input" value="{{ auth_status.shopify_url_val or '' }}" style="flex: 1; min-width: 200px;">
+                <button type="submit" class="btn glass-btn attr-primary" style="white-space: nowrap;"><i class="ph ph-plug"></i> Connetti Store</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+        {% if google_connected %}
+        <div style="margin-top: 32px; border-top: 1px solid var(--glass-border); padding-top: 24px;">
+            <h2 style="font-family: var(--font-serif); font-size: 1.5rem; margin-bottom: 24px; font-weight: 500;">Integrazioni Dati</h2>
+            
+            <div style="display: flex; flex-direction: column; gap: 24px; margin-bottom: 32px;">
+                
+                <!-- Riga 1: Sorgente Immagini -->
+                <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.4); display: grid; grid-template-columns: 1fr 2fr; gap: 24px; align-items: flex-start;">
+                    <div>
+                        <h3 style="font-size: 1.1rem; margin-top:0; margin-bottom: 8px; color: var(--text-primary); font-weight: 500;"><i class="ph ph-images" style="color:var(--accent-gold);"></i> Target Immagini Originali</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">Cartella Drive Root da cui estrarre in sequenza gli scatti grezzi da elaborare.</p>
+                    </div>
+                    
+                    <div>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="text" class="glass-input dynamic-id-input" id="drive-folder-id" placeholder="Es. 1a2B3..." value="" style="flex: 1; min-width: 0;" oninput="updateInputState(this)" onchange="scanDriveFolder(this.value); updateInputState(this)">
+                            <button class="btn glass-btn" onclick="openDriveBrowser('folder')" style="white-space: nowrap;"><i class="ph ph-magnifying-glass"></i> Sfoglia nel Drive</button>
+                            <button class="btn glass-btn" onclick="scanDriveFolder(document.getElementById('drive-folder-id').value)" title="Analizza Cartella"><i class="ph ph-arrows-clockwise"></i></button>
+                        </div>
+                        <div id="drive-folder-stats" style="padding: 12px; background: rgba(0,0,0,0.02); border-radius: 6px; border: 1px solid var(--glass-border); display: none; font-size: 0.8rem;">
+                            <!-- Injected stats -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Riga 2: Cartella Output -->
+                <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.4); border-left: 3px solid var(--accent-gold); display: grid; grid-template-columns: 1fr 2fr; gap: 24px; align-items: flex-start;">
+                    <div>
+                        <h3 style="font-size: 1.1rem; margin-top:0; margin-bottom: 8px; color: var(--text-primary); font-weight: 500;"><i class="ph ph-folder-star" style="color:var(--accent-gold);"></i> Archivio File Processati</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">Cartella in cui posizionare le immagini rinominate e completate.</p>
+                    </div>
+                    
+                    <div>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="text" class="glass-input dynamic-id-input" id="drive-folder-out-id" placeholder="Es. 9x8Y..." value="" style="flex: 1; min-width: 0;" oninput="updateInputState(this)" onchange="scanDriveFolderOut(this.value); updateInputState(this)">
+                            <button class="btn glass-btn" onclick="openDriveBrowser('folder_out')" style="white-space: nowrap;"><i class="ph ph-magnifying-glass"></i> Sfoglia nel Drive</button>
+                            <button class="btn glass-btn" onclick="scanDriveFolderOut(document.getElementById('drive-folder-out-id').value)" title="Analizza Cartella Output"><i class="ph ph-arrows-clockwise"></i></button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                            <button class="btn glass-btn attr-primary" id="btn-clone-tree" onclick="forceCloneStructure()" style="font-size: 0.75rem; padding: 4px 12px; white-space: nowrap;"><i class="ph ph-tree-structure"></i> Clona Albero Sorgente Ora</button>
+                            <span style="font-size: 0.7rem; color: var(--text-secondary);">Ricrea le sottocartelle dall'origine in questa directory di output.</span>
+                        </div>
+                        <div id="drive-folder-out-stats" style="padding: 12px; background: rgba(0,0,0,0.02); border-radius: 6px; border: 1px solid var(--glass-border); display: none; font-size: 0.8rem;">
+                            <!-- Injected stats -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Riga 3: Foglio Google Database -->
+                <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.4); display: grid; grid-template-columns: 1fr 2fr; gap: 24px; align-items: flex-start;">
+                    <div>
+                        <h3 style="font-size: 1.1rem; margin-top:0; margin-bottom: 8px; color: var(--text-primary); font-weight: 500;"><i class="ph ph-file-xls" style="color:var(--accent-green);"></i> Database Master (Sheets)</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">Foglio Cloud Centrale (modello Shopify) usato per compilare il feed.</p>
+                    </div>
+                    
+                    <div>
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="text" class="glass-input dynamic-id-input" id="drive-sheet-id" placeholder="Es. 1a2B3..." value="" style="flex: 1; min-width: 0;" oninput="updateInputState(this)" onchange="scanGoogleSheet(this.value); updateInputState(this)">
+                            <button class="btn glass-btn" onclick="openDriveBrowser('sheet')" style="white-space: nowrap;"><i class="ph ph-magnifying-glass"></i> Seleziona dal Drive</button>
+                            <button class="btn glass-btn" onclick="scanGoogleSheet(document.getElementById('drive-sheet-id').value)" title="Analizza Foglio Dati"><i class="ph ph-arrows-clockwise"></i></button>
+                        </div>
+                        <div id="drive-sheet-stats" style="padding: 12px; background: rgba(0,0,0,0.02); border-radius: 6px; border: 1px solid var(--glass-border); display: none; font-size: 0.8rem;">
+                            <!-- Injected stats -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <button class="btn glass-btn attr-primary" onclick="saveWorkspace()" style="width: 100%; justify-content: center; padding: 12px;"><i class="ph ph-floppy-disk"></i> Salva Configurazione Workspace</button>
+        </div>
+        
+        <!-- INTELLIGENZA ARTIFICIALE: CONFIGURAZIONE LLM -->
+        <div style="margin-top: 48px; border-top: 1px solid var(--glass-border); padding-top: 24px; padding-bottom: 40px;">
+            <h2 style="font-family: var(--font-serif); font-size: 1.5rem; margin-bottom: 24px; font-weight: 500;">Core di Intelligenza Artificiale (LLM Engines)</h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px;">Collega i motori neurali che svolgeranno le operazioni automatizzate per la piattaforma PIM. Puoi distribuire il carico tra intelligenze in cloud e moduli installati localmente sulla tua macchina del brand.</p>
+            
+            <div style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+                <!-- LLM Provider Cloud Auth -->
+                <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.4);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 12px; margin-bottom: 16px;">
+                        <h3 style="font-size: 1.1rem; margin:0; font-weight: 500;"><i class="ph ph-cloud-network" style="color:var(--text-primary);"></i> Server LLM Cloud (OAuth / API Key)</h3>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <form method="POST" action="/api/settings/keys" style="margin:0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid var(--glass-border); margin-bottom: 16px; flex-wrap:wrap; gap: 16px;">
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" style="width: 24px; height: 24px;">
+                                <div>
+                                    <h4 style="margin:0; font-weight: 500; font-size: 0.9rem;">OpenAI (GPT-4o)</h4>
+                                    <span style="font-size: 0.7rem; color: var(--text-secondary);">Ideale per Copywriting avanzato.</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 300px; justify-content: flex-end;">
+                                <div class="status-led {% if auth_status.openai %}green{% else %}red{% endif %}"></div>
+                                <input type="password" name="openai" placeholder="Incolla qui la OpenAI API Key (sk-...)" class="glass-input" value="{{ auth_status.openai_val or '' }}" style="flex: 1; max-width: 400px; font-size: 0.8rem;">
+                                <button type="submit" class="btn glass-btn attr-primary" style="font-size: 0.75rem;"><i class="ph ph-key"></i> Salva Chiave</button>
+                            </div>
+                        </div>
+                        </form>
+                        
+                        <form method="POST" action="/api/settings/keys" style="margin:0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid var(--glass-border); flex-wrap:wrap; gap: 16px;">
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <i class="ph ph-google-logo" style="font-size: 1.5rem; color:var(--text-primary);"></i>
+                                <div>
+                                    <h4 style="margin:0; font-weight: 500; font-size: 0.9rem;">Google Gemini (PIM Vision)</h4>
+                                    <span style="font-size: 0.7rem; color: var(--text-secondary);">Ideale per Riconoscimento Immagini / Tagging.</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 300px; justify-content: flex-end;">
+                                <div class="status-led {% if auth_status.gemini %}green{% else %}red{% endif %}"></div>
+                                <input type="password" name="gemini" placeholder="Incolla l'API Key Google AI Studio (AIza...)" class="glass-input" value="{{ auth_status.gemini_val or '' }}" style="flex: 1; max-width: 400px; font-size: 0.8rem;">
+                                <button type="submit" class="btn glass-btn attr-primary" style="font-size: 0.75rem;"><i class="ph ph-key"></i> Salva Chiave</button>
+                            </div>
+                        </div>
+                        </form>
+                    </div>
+                </div>
+
+                </div>
+                
+                <!-- LLM Routing Orchestrator -->
+                <div class="glass-card" style="padding: 24px; background: rgba(255,255,255,0.6); border: 2px solid var(--glass-border);">
+                    <h3 style="font-size: 1.1rem; margin:0; font-weight: 500; margin-bottom: 12px;"><i class="ph ph-git-merge" style="color:var(--text-primary);"></i> Regole di Inoltro (Task Routing)</h3>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 16px;">Decidi quale Intelligenza Artificiale debba farsi carico delle specifiche operazioni PIM.</p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label style="font-size:0.75rem; font-weight:500; display:block; margin-bottom:4px;">Stesura Titoli & Descrizioni Prodotto</label>
+                            <select class="glass-input" id="llm-route-content" style="width:100%;">
+                                <option value="openai">OpenAI (GPT-4o) Cloud</option>
+                                <option value="gemini">Google Gemini Pro Cloud</option>
+                                <option value="local">Motore Locale Offline</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:0.75rem; font-weight:500; display:block; margin-bottom:4px;">Ricerca & Attribuzione Tag/SEO</label>
+                            <select class="glass-input" id="llm-route-tags" style="width:100%;">
+                                <option value="gemini">Google Gemini Pro Cloud</option>
+                                <option value="openai">OpenAI (GPT-4o) Cloud</option>
+                                <option value="local">Motore Locale Offline</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+
+        
+        {% endif %}
+        
+        <!-- MESSAGGI EVENTI AUTH -->
+        {% if error_msg == "auth_failed" %}
+        <div id="auth-error-box" style="background: var(--accent-red); color: white; padding: 12px; border-radius: 8px; margin-top: 16px; font-size: 0.9rem;">
+            Errore di autenticazione API. Riprova.<br>
+            <span style="font-size: 0.8rem; opacity: 0.8;">[Dettaglio: {{ request.query_params.get('detail', 'Nessun dettaglio') }}]</span>
+        </div>
+        <script>setTimeout(() => { document.getElementById('auth-error-box').style.display = 'none'; }, 20000);</script>
+        {% endif %}
+        
+        {% if success_msg == "google_connected" %}
+        <div id="auth-success-box" style="background: var(--accent-green); color: white; padding: 12px; border-radius: 8px; margin-top: 16px; font-size: 0.9rem;">
+            Account Google connesso correttamente al Workspace.
+        </div>
+        <script>setTimeout(() => { document.getElementById('auth-success-box').style.display = 'none'; }, 20000);</script>
+        {% endif %}
+        
+    </div>
+
+<script>
+let currentDriveTarget = '';
+let driveBreadcrumbs = [];
+
+function openDriveBrowser(type) {
+    currentDriveTarget = type;
+    driveBreadcrumbs = [{ id: 'root', name: 'Il Mio Drive' }];
+    document.getElementById('drive-modal').style.display = 'flex';
+    fetchDriveItems('root', type);
+}
+
+function closeDriveBrowser() {
+    document.getElementById('drive-modal').style.display = 'none';
+}
+
+function navigateToBreadcrumb(index, type) {
+    // Taglia l'array fino a quell'indice
+    driveBreadcrumbs = driveBreadcrumbs.slice(0, index + 1);
+    const targetId = driveBreadcrumbs[driveBreadcrumbs.length - 1].id;
+    fetchDriveItems(targetId, type);
+}
+
+function fetchDriveItems(parentId, type) {
+    const listContainer = document.getElementById('drive-list');
+    const headerContainer = document.getElementById('drive-breadcrumbs');
+    
+    // Aggiorna navigazione a briciole
+    if(headerContainer) {
+        headerContainer.innerHTML = '';
+        driveBreadcrumbs.forEach((crumb, index) => {
+            let sp = document.createElement('span');
+            sp.innerText = crumb.name;
+            sp.style.cursor = 'pointer';
+            sp.style.color = (index === driveBreadcrumbs.length - 1) ? 'var(--text-primary)' : 'var(--text-secondary)';
+            sp.style.fontWeight = (index === driveBreadcrumbs.length - 1) ? '600' : '400';
+            sp.onclick = () => navigateToBreadcrumb(index, type);
+            headerContainer.appendChild(sp);
+            
+            if (index < driveBreadcrumbs.length - 1) {
+                let div = document.createElement('span');
+                div.innerHTML = '&nbsp;/&nbsp;';
+                div.style.color = 'var(--text-secondary)';
+                headerContainer.appendChild(div);
+            }
+        });
+    }
+
+    listContainer.innerHTML = '<div style="padding:24px; text-align:center;"><i class="ph ph-spinner ph-spin" style="font-size:2rem;"></i><br>Lettura dal server Google...</div>';
+    
+    fetch(`/api/drive/list?parent_id=${parentId}&item_type=${type}`)
+    .then(res => res.json())
+    .then(data => {
+        if(data.error) {
+            listContainer.innerHTML = `<div style="color:var(--accent-red); padding:16px;">Errore: ${data.error}</div>`;
+            return;
+        }
+        
+        listContainer.innerHTML = '';
+        
+        // Show create folder button ONLY when selecting the Output Folder Target
+        const createBtn = document.getElementById('drive-create-btn');
+        if (createBtn) {
+            createBtn.style.display = (parentId === 'sharedWithMe' || currentDriveTarget !== 'folder_out') ? 'none' : 'flex';
+        }
+        
+        const selectCurrentBtn = document.getElementById('drive-select-current-btn');
+        if (selectCurrentBtn) {
+            selectCurrentBtn.style.display = (parentId !== 'root' && parentId !== 'sharedWithMe' && currentDriveTarget.includes('folder')) ? 'flex' : 'none';
+        }
+        
+        // Se siamo in root, mostra la riga per i file Condivisi!
+        if (parentId === 'root') {
+            let sharedItem = document.createElement('div');
+            sharedItem.style.padding = '12px 16px';
+            sharedItem.style.cursor = 'pointer';
+            sharedItem.style.borderBottom = '1px solid var(--glass-border)';
+            sharedItem.style.display = 'flex';
+            sharedItem.style.alignItems = 'center';
+            sharedItem.style.gap = '12px';
+            sharedItem.style.background = 'rgba(182,141,64,0.05)';
+            sharedItem.innerHTML = `<i class="ph ph-users" style="color:var(--accent-gold); font-size:1.2rem;"></i> <span style="flex:1; font-weight:500;">Condivisi Con Me</span>`;
+            sharedItem.onclick = () => {
+                driveBreadcrumbs.push({ id: 'sharedWithMe', name: 'Condivisi Con Me' });
+                fetchDriveItems('sharedWithMe', type);
+            };
+            sharedItem.onmouseover = () => sharedItem.style.background = 'rgba(182,141,64,0.1)';
+            sharedItem.onmouseout = () => sharedItem.style.background = 'rgba(182,141,64,0.05)';
+            listContainer.appendChild(sharedItem);
+        }
+        
+        if(data.files.length === 0 && parentId !== 'root') {
+            listContainer.innerHTML += '<div style="padding:16px; color:var(--text-secondary);">Nessun file o cartella trovato o condiviso qui.</div>';
+        }
+        
+        data.files.forEach(f => {
+            let item = document.createElement('div');
+            item.style.padding = '12px 16px';
+            item.style.cursor = 'pointer';
+            item.style.borderBottom = '1px solid var(--glass-border)';
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.gap = '12px';
+            
+            let ownerEmail = '';
+            if (f.owners && f.owners.length > 0) {
+                let nameOrEmail = f.owners[0].displayName || f.owners[0].emailAddress;
+                // Exclude displaying email if it's the current user themselves? The Google API doesn't tell us easily who "me" is unless we check 'me' flag, but Drive handles it well. 
+                // Let's just always display it nicely.
+                ownerEmail = `<div style="font-size:0.65rem; color:var(--text-secondary); opacity: 0.8; margin-top: 2px;"><i class="ph ph-user"></i> ${nameOrEmail}</div>`;
+            }
+            
+            // Definisce l'involucro del testo con il micro-label owner
+            const makeLabel = (labelTxt) => `<div style="flex:1;"><span style="font-weight:500;">${labelTxt}</span>${ownerEmail}</div>`;
+            const makeWeakLabel = (labelTxt) => `<div style="flex:1;"><span style="opacity:0.6;">${labelTxt}</span>${ownerEmail}</div>`;
+            
+            // Check mimeType to decide how to render the item
+            if (f.mimeType === 'application/vnd.google-apps.folder') {
+                item.innerHTML = `<i class="ph ph-folder" style="color:var(--accent-gold); font-size:1.2rem;"></i> ${makeLabel(f.name)}`;
+                
+                let btnGroup = `<div style="display:flex; gap:6px;">`;
+                btnGroup += `<button class="btn glass-btn" style="padding:4px 12px; font-size:0.75rem;" onclick="driveBreadcrumbs.push({ id: '${f.id}', name: '${f.name.replace(/'/g, "\\'")}' }); fetchDriveItems('${f.id}', '${type}'); event.stopPropagation();"><i class="ph ph-folder-open"></i> Apri</button>`;
+                
+                if (currentDriveTarget.includes('folder')) {
+                    btnGroup += `<button class="btn glass-btn" style="padding:4px 12px; font-size:0.75rem; color:var(--text-primary); border-color:var(--text-primary);" onclick="selectDriveItem('${f.id}'); event.stopPropagation();"><i class="ph ph-check-circle"></i> Seleziona</button>`;
+                }
+                btnGroup += `</div>`;
+                
+                item.innerHTML += btnGroup;
+                
+                item.onclick = () => {
+                    driveBreadcrumbs.push({ id: f.id, name: f.name });
+                    fetchDriveItems(f.id, type);
+                };
+            } else if (f.mimeType === 'application/vnd.google-apps.spreadsheet') {
+                item.innerHTML = `<i class="ph ph-file-xls" style="color:var(--accent-green); font-size:1.2rem;"></i> ${makeLabel(f.name)}`;
+                if (type === 'sheet') {
+                    item.innerHTML += `<button class="btn glass-btn" style="padding:4px 8px; font-size:0.75rem; color:var(--accent-green);" onclick="selectDriveItem('${f.id}'); event.stopPropagation();">Scegli Foglio</button>`;
+                } else {
+                    item.style.opacity = '0.5';
+                    item.style.cursor = 'default';
+                }
+            } else if (f.mimeType.startsWith('image/')) {
+                item.innerHTML = `<i class="ph ph-image" style="color:var(--text-secondary); font-size:1.2rem;"></i> ${makeWeakLabel(f.name)}`;
+                item.style.cursor = 'default';
+            } else {
+                item.innerHTML = `<i class="ph ph-file" style="color:var(--text-secondary); font-size:1.2rem;"></i> ${makeWeakLabel(f.name)}`;
+                item.style.cursor = 'default';
+            }
+            
+            // Hover effect inline
+            item.onmouseover = () => item.style.background = 'rgba(0,0,0,0.03)';
+            item.onmouseout = () => item.style.background = 'transparent';
+            
+            listContainer.appendChild(item);
+        });
+        
+    });
+}
+
+function selectDriveItem(id) {
+    if(currentDriveTarget === 'folder') {
+        let el = document.getElementById('drive-folder-id');
+        el.value = id;
+        updateInputState(el);
+        scanDriveFolder(id);
+    } else if (currentDriveTarget === 'folder_out') {
+        let el = document.getElementById('drive-folder-out-id');
+        el.value = id;
+        updateInputState(el);
+    } else {
+        let el = document.getElementById('drive-sheet-id');
+        el.value = id;
+        updateInputState(el);
+    }
+    closeDriveBrowser();
+}
+
+function createNewFolderInModal() {
+    const folderName = prompt("Nome della nuova cartella:");
+    if (!folderName) return;
+    
+    // the target parentId is the last element in breadcrumbs
+    const parentId = driveBreadcrumbs.length > 0 ? driveBreadcrumbs[driveBreadcrumbs.length - 1].id : 'root';
+    
+    fetch('/api/drive/create-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_id: parentId, name: folderName })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.error) {
+            alert("Errore Google API: " + data.error);
+        } else {
+            fetchDriveItems(parentId, currentDriveTarget);
+        }
+    });
+}
+
+function scanDriveFolder(folderId) {
+    if(!folderId) return;
+    const statsBox = document.getElementById('drive-folder-stats');
+    statsBox.style.display = 'block';
+    statsBox.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Scansione cartella sorgente in corso...';
+    
+    fetch(`/api/drive/stats?folder_id=${folderId}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                statsBox.innerHTML = `<span style="color:var(--accent-red)"><i class="ph ph-warning-circle"></i> ${data.error}</span>`;
+                return;
+            }
+            statsBox.innerHTML = `
+                <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--glass-border);">
+                    <i class="ph ph-folder-open" style="color:var(--accent-gold);"></i> <strong>${data.folder_name}</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <strong>Analisi Root Originali:</strong>
+                    <span class="badge" style="background:var(--accent-green); color:#FFF;">${data.image_count} Immagini Totali Rilevate</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary);">
+                    <span>Cartelle analizzate: ${data.folder_count}</span>
+                    <span>Modificate PIM / Shopify: ${data.processed_count}</span>
+                </div>
+            `;
+        });
+}
+
+function scanDriveFolderOut(folderId) {
+    if(!folderId) return;
+    const statsBox = document.getElementById('drive-folder-out-stats');
+    statsBox.style.display = 'block';
+    statsBox.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Scansione root output in corso...';
+    
+    fetch(`/api/drive/stats?folder_id=${folderId}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                statsBox.innerHTML = `<span style="color:var(--accent-red)"><i class="ph ph-warning-circle"></i> ${data.error}</span>`;
+                return;
+            }
+            statsBox.innerHTML = `
+                <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--glass-border);">
+                    <i class="ph ph-folder-star" style="color:var(--accent-gold);"></i> <strong>${data.folder_name}</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <strong>Stato Output Repository:</strong>
+                    <span class="badge" style="background:var(--text-primary); color:#FFF;">${data.image_count} Immagini Generate</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary);">
+                    <span>Alberi di Sottocartelle: ${data.folder_count}</span>
+                    <span>Ready for Launch</span>
+                </div>
+            `;
+        });
+}
+
+function scanGoogleSheet(sheetId) {
+    if(!sheetId) return;
+    const statsBox = document.getElementById('drive-sheet-stats');
+    statsBox.style.display = 'block';
+    statsBox.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Connettendo a Spreadsheets...';
+    
+    fetch(`/api/sheets/stats?sheet_id=${sheetId}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                statsBox.innerHTML = `<span style="color:var(--accent-red)"><i class="ph ph-warning-circle"></i> ${data.error}</span>`;
+                return;
+            }
+            let statusBadge = (data.ai_tasks_pending > 0) 
+                              ? `<span class="badge" style="background:var(--accent-gold); color:#000;">${data.ai_tasks_pending} Task IA in Coda</span>`
+                              : `<span class="badge" style="background:var(--accent-green); color:#FFF;">Perfetto</span>`;
+
+            statsBox.innerHTML = `
+                <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--glass-border); display:flex; justify-content:space-between; align-items:center;">
+                    <span><i class="ph ph-file-xls" style="color:var(--accent-green);"></i> <strong style="color:var(--text-primary);">${data.sheet_name}</strong></span>
+                    ${statusBadge}
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px; align-items:center;">
+                    <strong style="font-size: 0.8rem; color: var(--text-secondary);">Tracking Righe (Prodotti Totali):</strong>
+                    <span class="badge" style="background:rgba(0,0,0,0.5); color:#FFF; font-size: 0.75rem;">${data.row_count}</span>
+                </div>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; background: rgba(255,255,255,0.4); border-radius: 8px; border: 1px solid rgba(0,0,0,0.05); margin-bottom: 8px;">
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+                        <span style="font-size: 1.2rem; font-weight:600; color:var(--text-primary); text-shadow: 0px 1px 2px rgba(0,0,0,0.1);">${data.ready_products}</span>
+                        <span style="font-size: 0.6rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">Completati</span>
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; border-left:1px solid rgba(0,0,0,0.06); border-right:1px solid rgba(0,0,0,0.06);">
+                        <span style="font-size: 1.2rem; font-weight:600; color:var(--accent-red);">${data.missing_desc_count}</span>
+                        <span style="font-size: 0.6rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">No Tit./Des.</span>
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+                        <span style="font-size: 1.2rem; font-weight:600; color:var(--accent-gold);">${data.missing_tags_count}</span>
+                        <span style="font-size: 0.6rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">No Tag</span>
+                    </div>
+                </div>
+
+                <div style="font-size:0.7rem; color:var(--text-secondary); text-align:center; margin-top: 8px;">
+                    Rilevate ${data.column_count} colonne Shopify mappate.
+                </div>
+            `;
+        });
+}
+
+function saveWorkspace() {
+    const cnf = {
+        folder_id: document.getElementById('drive-folder-id').value,
+        folder_out_id: document.getElementById('drive-folder-out-id').value,
+        sheet_id: document.getElementById('drive-sheet-id').value
+    };
+    
+    const btn = event.currentTarget || document.activeElement;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Salvataggio...';
+    
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cnf)
+    }).then(res => res.json()).then(() => {
+        btn.innerHTML = '<i class="ph ph-check-circle"></i> Configurazione Salvata';
+        finalizeSave(btn, oldHtml);
+    });
+}
+
+function forceCloneStructure() {
+    const sourceId = document.getElementById('drive-folder-id').value;
+    const targetId = document.getElementById('drive-folder-out-id').value;
+    
+    if (!sourceId || !targetId) {
+        alert("Assicurati di aver inserito sia la cartella Sorgente che quella di Destinazione prima di clonare.");
+        return;
+    }
+    
+    const btn = event.currentTarget || document.activeElement;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Costruzione Albero...';
+    
+    fetch('/api/drive/clone-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_id: sourceId, target_id: targetId })
+    }).then(r => r.json()).then(cloneData => {
+        if (cloneData.error) {
+            alert("Errore Clonazione Cartelle: " + cloneData.error);
+            btn.innerHTML = oldHtml;
+        } else {
+            // Temporary success indicator
+            btn.style.background = 'var(--accent-green)';
+            if (cloneData.folders_created > 0) {
+                btn.innerHTML = `<i class="ph ph-check-circle"></i> Create ${cloneData.folders_created} cartelle`;
+            } else {
+                btn.innerHTML = `<i class="ph ph-check-circle"></i> Sincronizzato (Tutto ok)`;
+            }
+            
+            // Switch permanently to "Check & Sync"
+            setTimeout(() => {
+                btn.style.background = '';
+                btn.innerHTML = '<i class="ph ph-arrows-merge"></i> Controlla e Sincronizza Albero';
+            }, 3000);
+        }
+        scanDriveFolderOut(targetId);
+    });
+}
+
+function updateInputState(inputEl) {
+    if (inputEl.value && inputEl.value.trim() !== '') {
+        inputEl.style.background = 'rgba(46, 204, 113, 0.05)';
+        inputEl.style.borderColor = 'rgba(46, 204, 113, 0.5)';
+        inputEl.style.color = 'var(--text-primary)';
+        inputEl.style.fontWeight = '500';
+    } else {
+        inputEl.style.background = 'rgba(255, 255, 255, 0.5)';
+        inputEl.style.borderColor = 'var(--glass-border)';
+        inputEl.style.color = 'inherit';
+        inputEl.style.fontWeight = 'normal';
+    }
+}
+
+function finalizeSave(btn, oldHtml) {
+    btn.style.background = 'var(--accent-green)';
+    setTimeout(() => {
+        btn.innerHTML = oldHtml;
+        btn.style.background = '';
+    }, 3000);
+    // Refresh stats to verify output now exists
+    scanDriveFolderOut(document.getElementById('drive-folder-out-id').value);
+}
+
+// Carica i dati appena la pagina è pronta
+document.addEventListener("DOMContentLoaded", () => {
+    fetch('/api/settings')
+        .then(res => res.json())
+        .then(data => {
+            if(data.folder_id) {
+                let el = document.getElementById('drive-folder-id');
+                el.value = data.folder_id;
+                updateInputState(el);
+            }
+            if(data.folder_out_id) {
+                let el = document.getElementById('drive-folder-out-id');
+                el.value = data.folder_out_id;
+                updateInputState(el);
+            }
+            if(data.sheet_id) {
+                let el = document.getElementById('drive-sheet-id');
+                el.value = data.sheet_id;
+                updateInputState(el);
+            }
+            
+            // Auto scan solo se ci sono
+            if(data.folder_id) scanDriveFolder(data.folder_id);
+            if(data.folder_out_id) scanDriveFolderOut(data.folder_out_id);
+            if(data.sheet_id) scanGoogleSheet(data.sheet_id);
+        });
+        
+    // Local AI Engine Polling for LLM Routing Dynamic Assignment
+    fetch('/api/ollama/status')
+        .then(res => res.json())
+        .then(data => {
+            const routeContent = document.getElementById('llm-route-content');
+            const routeTags = document.getElementById('llm-route-tags');
+            
+            if(!routeContent || !routeTags) return; // Prevent crashes if they don't exist
+            
+            // Clean specific local placeholders
+            Array.from(routeContent.options).forEach(opt => { if(opt.value.startsWith('local')) opt.remove(); });
+            Array.from(routeTags.options).forEach(opt => { if(opt.value.startsWith('local')) opt.remove(); });
+            
+            if (data.active) {
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(m => {
+                        routeContent.add(new Option(`Locale: ${m.name}`, `local_${m.name}`));
+                        routeTags.add(new Option(`Locale: ${m.name}`, `local_${m.name}`));
+                    });
+                } else {
+                    let optDisabled = new Option(`Motore Locale (Installa un Modello prima in Foundry)`, `local`);
+                    optDisabled.disabled = true;
+                    routeContent.add(optDisabled);
+                    routeTags.add(optDisabled.cloneNode(true));
+                }
+            } else {
+                let optDisabled = new Option(`Motore Locale (Avvia Ollama prima)`, `local`);
+                optDisabled.disabled = true;
+                routeContent.add(optDisabled);
+                routeTags.add(optDisabled.cloneNode(true));
+            }
+        });
+});
+
+
+</script>
+
+<!-- MODAL DRIVE BROWSER -->
+<div id="drive-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(253,252,249,0.9); z-index:9999; align-items:center; justify-content:center; backdrop-filter:blur(5px);">
+    <div style="background:#FFF; width:650px; max-width:90%; border-radius:12px; border:1px solid var(--glass-border); box-shadow: 0 10px 40px rgba(0,0,0,0.1); display:flex; flex-direction:column; overflow:hidden;">
+        <div style="padding:16px 24px; border-bottom:1px solid var(--glass-border); display:flex; justify-content:space-between; align-items:center; background:#FAFAFA;">
+            <div id="drive-breadcrumbs" style="font-family:var(--font-serif); font-size:1.1rem; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+                <!-- breadcrumbs injected here -->
+            </div>
+            <div style="display:flex; align-items:center; gap: 8px;">
+                <button id="drive-select-current-btn" class="btn glass-btn attr-primary" style="padding: 4px 12px; font-size: 0.75rem; display: none;" onclick="selectDriveItem(driveBreadcrumbs[driveBreadcrumbs.length - 1].id)"><i class="ph ph-check-circle"></i> Scegli Questa Cartella</button>
+                <button id="drive-create-btn" class="btn glass-btn" style="padding: 4px 12px; font-size: 0.75rem; display: none;" onclick="createNewFolderInModal()"><i class="ph ph-folder-plus"></i> Nuova Cartella</button>
+                <i class="ph ph-x" style="cursor:pointer; font-size:1.2rem; margin-left:8px;" onclick="closeDriveBrowser()"></i>
+            </div>
+        </div>
+        <div id="drive-list" style="max-height:500px; overflow-y:auto;">
+            <!-- list injected here -->
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Catalogo Centrale <span style="font-size:1.2rem; color:var(--text-secondary);">(Live Inventory)</span></div>
+
+<div class="glass-panel" style="padding: 24px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--accent-gold);">
+    <div>
+        <h2 style="font-weight: 700; font-size: 1.1rem; margin-bottom: 4px;"><i class="ph ph-shield-check" style="color:var(--accent-gold);"></i> The Sentinel (Audit Mode)</h2>
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">Analisi automatica della qualità dati per la sicurezza dello Storefront.</p>
+    </div>
+    <div style="display: flex; gap: 16px;">
+        <button onclick="location.reload()" class="btn glass-btn" style="padding: 10px;"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+    </div>
+</div>
+
+<div class="section-head"><i class="ph ph-books"></i> Libreria Articoli</div>
+<div class="glass-panel" style="overflow-x: auto;">
+    <table class="inventory-table">
+        <thead>
+            <tr>
+                <th>Immagine</th>
+                <th>Brand / Modello</th>
+                <th style="width: 200px;">Sentinel Audit (Anomalie)</th>
+                <th>Prezzo (€)</th>
+                <th>Status Shopify</th>
+                <th style="text-align: right; padding-right: 20px;">Azioni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            {% set has_images = p.matched_images_json and p.matched_images_json != '[]' %}
+            {% set has_price = p.price and p.price > 0 %}
+            {% set has_seo = p.seo_title %}
+            
+            <tr style="{% if not has_price or not has_images %}background:rgba(239, 68, 68, 0.02);{% endif %}">
+                <td>
+                    <div style="width: 48px; height: 48px; background: rgba(0,0,0,0.05); border-radius: 8px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                        {% if has_images %}
+                            <i class="ph ph-image-square" style="font-size: 1.5rem; color: var(--accent-green);"></i>
+                        {% else %}
+                            <i class="ph ph-image-square" style="font-size: 1.5rem; color: #ccc;"></i>
+                        {% endif %}
+                    </div>
+                </td>
+                <td style="font-weight: 600;">
+                    {{ p.brand }}<br>
+                    <span style="font-weight: 400; font-size:0.8rem; color:var(--text-secondary)">{{ p.model }}</span>
+                </td>
+                <td>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        {% if not has_price %}
+                            <span class="sentinel-flag error" title="Prezzo non impostato!"><i class="ph ph-currency-eur"></i> No Price</span>
+                        {% endif %}
+                        {% if not has_images %}
+                            <span class="sentinel-flag error" title="Nessun asset drive trovato!"><i class="ph ph-image-broken"></i> No Images</span>
+                        {% endif %}
+                        {% if not has_seo %}
+                            <span class="sentinel-flag warn" title="Testo SEO non generato."><i class="ph ph-text-aa"></i> No SEO</span>
+                        {% endif %}
+                        {% if has_price and has_images and has_seo %}
+                            <span class="sentinel-flag ok"><i class="ph ph-seal-check"></i> High Quality</span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td style="font-family: var(--font-serif);">
+                    <input type="number" id="catalog-price-{{ p.id }}" value="{{ p.price or 0 }}" class="glass-input" style="width: 100px; padding: 4px; font-size: 0.9rem; {% if not has_price %}border-color:var(--accent-red);{% endif %}">
+                </td>
+                <td><span class="badge {{ p.status|lower }}">{{ p.status }}</span></td>
+                <td style="text-align: right; padding-right: 20px;">
+                    <button class="btn glass-btn" onclick="saveAndSync({{ p.id }})" style="padding: 6px 12px; font-size: 0.85rem;" id="btn-ss-{{ p.id }}">
+                        <i class="ph ph-cloud-arrow-up"></i> Aggiorna Live
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px;">Nessun prodotto validato pronto per il web. Clicca su Atelier Lab.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+.sentinel-flag { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; text-transform: uppercase; border: 1px solid transparent; }
+.sentinel-flag.error { background: #FEF2F2; color: #B91C1C; border-color: #FEE2E2; }
+.sentinel-flag.warn { background: #FFFBEB; color: #B45309; border-color: #FEF3C7; }
+.sentinel-flag.ok { background: #F0FDF4; color: #15803D; border-color: #DCFCE7; }
+</style>
+
+<script>
+function saveAndSync(id) {
+    let btn = document.getElementById('btn-ss-' + id);
+    let price = document.getElementById('catalog-price-' + id).value;
+    
+    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i>";
+    btn.disabled = true;
+
+    fetch(`/api/catalog/sync/${id}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ price: price })
+    }).then(res => res.json()).then(data => {
+        btn.innerHTML = "<i class='ph ph-check'></i> Aggiornato";
+        btn.style.color = "var(--accent-green)";
+        setTimeout(() => {
+            btn.innerHTML = "<i class='ph ph-cloud-arrow-up'></i> Aggiorna Live";
+            btn.style.color = "var(--text-primary)";
+            btn.disabled = false;
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

@@ -20,7 +20,9 @@ def save_api_key(service: str, key: str):
         "gemini": "GEMINI_API_KEY",
         "serper": "SERPER_API_KEY",
         "shopify_token": "SHOPIFY_ADMIN_TOKEN",
-        "shopify_url": "SHOPIFY_STORE_URL"
+        "shopify_url": "SHOPIFY_STORE_URL",
+        "shopify_client_id": "SHOPIFY_CLIENT_ID",
+        "shopify_client_secret": "SHOPIFY_CLIENT_SECRET"
     }
     
     var_name = env_vars_map.get(service)
@@ -30,7 +32,16 @@ def save_api_key(service: str, key: str):
     return False
 
 def get_api_key(service: str):
-    """Legge una chiave (parzialmente coperta) dall'ambiente."""
+    """Legge una chiave (mascherata per la UI) dall'ambiente."""
+    val = get_raw_api_key(service)
+    if val:
+        if len(val) > 8:
+            return f"{val[:4]}...{val[-4:]}"
+        return "***"
+    return None
+
+def get_raw_api_key(service: str):
+    """Legge la chiave reale (non mascherata) dall'ambiente per l'uso interno."""
     load_dotenv(ENV_FILE, override=True)
     env_vars_map = {
         "openai": "OPENAI_API_KEY",
@@ -38,17 +49,13 @@ def get_api_key(service: str):
         "gemini": "GEMINI_API_KEY",
         "serper": "SERPER_API_KEY",
         "shopify_token": "SHOPIFY_ADMIN_TOKEN",
-        "shopify_url": "SHOPIFY_STORE_URL"
+        "shopify_url": "SHOPIFY_STORE_URL",
+        "shopify_client_id": "SHOPIFY_CLIENT_ID",
+        "shopify_client_secret": "SHOPIFY_CLIENT_SECRET"
     }
-    
     var_name = env_vars_map.get(service)
     if var_name:
-        val = os.getenv(var_name)
-        if val:
-            # Ritorna mascherata per non sbirciare in UI tutto il JWT
-            if len(val) > 8:
-                return f"{val[:4]}...{val[-4:]}"
-            return "***"
+        return os.getenv(var_name)
     return None
 
 def check_google_auth():

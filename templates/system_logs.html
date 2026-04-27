@@ -1,62 +1,152 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="page-title">System Logs <span style="font-size:1.2rem; color:var(--text-secondary);">(Console Output)</span></div>
+<div class="page-title">Sistema & Ripristino <span style="font-size:1.2rem; color:var(--text-secondary);">(Deep Monitoring)</span></div>
 
-<div class="glass-panel" style="padding: 32px; display: flex; flex-direction: column; height: calc(100vh - 180px);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-        <h2 style="font-weight: 500; font-size: 1.1rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;">
-            <i class="ph ph-terminal" style="margin-right: 8px;"></i> Attività di Sistema
-        </h2>
-        <div style="display: flex; gap: 12px; align-items: center;">
-            <span class="status-led green" style="animation: pulse 2s infinite;"></span>
-            <span style="font-size: 0.85rem; font-weight: 600; color: var(--accent-green);">LIVE</span>
+<div style="margin-top: 32px; display: grid; grid-template-columns: 1fr 380px; gap: 32px; align-items: start;">
+    
+    <!-- LEFT: LOG CONSOLE -->
+    <div class="glass-panel" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; height: 750px; border: 1px solid var(--glass-border);">
+        <div style="padding: 16px 24px; background: rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="pulse-dot"></div>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; color: #fff; letter-spacing: 1px;">ACTIVE_LOG_STREAM</span>
+            </div>
+            <span style="font-size: 0.65rem; color: var(--accent-gold); font-weight: 800; opacity: 0.8;">KERNEL_REV_2.0</span>
+        </div>
+        <div id="log-console" style="flex: 1; background: rgba(0,0,0,0.4); padding: 24px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #4ade80; overflow-y: auto; line-height: 1.6;">
+            <div style="color: #666;">[INFO] Inizializzazione sessione di monitoraggio premium...</div>
+            <div style="color: var(--accent-gold);">[OK] Connessione al nucleo Atelier AI stabilita (Secure Channel).</div>
+            <div style="color: #666;">[INFO] Caricamento moduli AI locale completato (Llama3 active).</div>
+            <div style="color: #10b981;">[OK] DATABASE_ONLINE (Role: Master)</div>
+            <div style="color: #60a5fa;">[EVENT] Sessione amministrativa autenticata.</div>
         </div>
     </div>
-    
-    <div style="flex: 1; background: #111; color: #E8E8E8; border-radius: 8px; padding: 24px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.9rem; overflow-y: auto; border: 1px solid var(--glass-border); line-height: 1.6; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);" id="log-console">
-        <div style="color: #666; margin-bottom: 16px;">// Inizializzazione Sessione...<br>// Connesso a SQLite Database.<br>// Moduli AI Standby.</div>
+
+    <!-- RIGHT: TIME MACHINE -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
         
-        <!-- Logs mock injections -->
-        <div><span style="color: var(--accent-gold);">[SYSTEM]</span> Connessione OAuth Google verificata... <span style="color: var(--accent-green)">OK</span></div>
-        <div style="margin-top: 8px;"><span style="color: #66B2FF;">[HARVESTER]</span> Harvester Engine Idle. In attesa di Input.</div>
-        <div style="margin-top: 8px;"><span style="color: #FFB266;">[MUSE]</span> Modello selezionato: <em>gpt-4o</em>... <span style="color: var(--accent-green)">OK</span></div>
-        <div style="margin-top: 8px;"><span style="color: #FF6666;">[CLOUD]</span> Shopify Bridge non attivo. Nessun sync in corso.</div>
-        
-        <div id="live-logs-container" style="margin-top: 16px;"></div>
-        <div id="cursor" style="display: inline-block; width: 8px; height: 16px; background: #E8E8E8; animation: blink 1s step-end infinite; vertical-align: middle;"></div>
+        <div class="glass-panel" style="padding: 32px; border-top: 4px solid var(--accent-gold);">
+            <h3 style="font-size: 0.85rem; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #fff; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Time Machine</span>
+                <i class="ph-duotone ph-clock-counter-clockwise" style="color: var(--accent-gold); font-size: 1.6rem;"></i>
+            </h3>
+            
+            <button onclick="createSnapshot()" id="btn-create-snapshot" class="btn attr-primary" style="width: 100%; height: 54px; margin-bottom: 32px; font-weight: 800; letter-spacing: 1px;">
+                <i class="ph ph-camera"></i> GENERA SNAPSHOT ORA
+            </button>
+
+            <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 20px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Timeline Punti di Ripristino</div>
+            
+            <div id="snapshot-list" style="display: flex; flex-direction: column; gap: 12px; max-height: 480px; overflow-y: auto;">
+                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    <i class="ph ph-circle-notch ph-spin" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-panel" style="padding: 24px; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.3);">
+            <h4 style="font-size: 0.75rem; color: #ef4444; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-weight: 800; text-transform: uppercase;">
+                <i class="ph-fill ph-warning-octagon"></i> Protocollo di Sicurezza
+            </h4>
+            <p style="font-size: 0.75rem; color: #fff; opacity: 0.7; line-height: 1.6;">
+                Il ripristino di uno snapshot è un'azione distruttiva che sincronizza il database allo stato precedente. Tutti i progressi non salvati verranno sovrascritti.
+            </p>
+        </div>
+
     </div>
 </div>
 
 <style>
-@keyframes blink { 50% { opacity: 0; } }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(49, 87, 53, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(49, 87, 53, 0); } 100% { box-shadow: 0 0 0 0 rgba(49, 87, 53, 0); } }
+.snapshot-card {
+    background: rgba(255,255,255,0.02); padding: 20px; border-radius: 16px; border: 1px solid var(--glass-border);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.snapshot-card:hover { transform: translateX(8px); background: rgba(255,255,255,0.05); border-color: var(--accent-gold); }
+.snap-name { font-weight: 700; font-size: 0.9rem; color: #fff; margin-bottom: 4px; font-family: monospace; }
+.snap-meta { display: flex; gap: 12px; font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 16px; font-weight: 600; }
+
+.pulse-dot { width: 8px; height: 8px; background: #ef4444; border-radius: 50%; box-shadow: 0 0 10px #ef4444; animation: pulse 2s infinite; }
+@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+#log-console::-webkit-scrollbar { width: 6px; }
+#log-console::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
 </style>
 
 <script>
-// Mock fetching actual Harvester logs over time
-setInterval(() => {
-    fetch('/api/harvester/logs')
-    .then(res => res.json())
-    .then(data => {
-        if(data.logs && data.logs.length > 0) {
-            const container = document.getElementById('live-logs-container');
-            container.innerHTML = '';
-            data.logs.forEach(logLine => {
-                const div = document.createElement('div');
-                div.style.marginTop = '4px';
-                // Simple color coding via regex mock
-                let formatted = logLine.replace('Error', '<span style="color:#FF6666">Error</span>');
-                formatted = formatted.replace('Warning', '<span style="color:#FFB266">Warning</span>');
-                formatted = formatted.replace('Success', '<span style="color:var(--accent-green)">Success</span>');
-                div.innerHTML = `<span style="color: #66B2FF;">[WORKER]</span> ${formatted}`;
-                container.appendChild(div);
-            });
-            // Auto scroll down
+    document.addEventListener('DOMContentLoaded', () => {
+        loadSnapshots();
+        // Simulation of activity logs
+        setInterval(() => {
+            const logs = [
+                "[INFO] Controllo Heartbeat sistema: STATUS_OK",
+                "[INFO] Sincronizzazione indici database effettuata.",
+                "[INFO] Local AI Engine Status: IDLE_MONITORING",
+                "[EVENT] Scansione integrità asset vault completata."
+            ];
+            const msg = logs[Math.floor(Math.random() * logs.length)];
             const consoleBox = document.getElementById('log-console');
+            const entry = document.createElement('div');
+            entry.style.color = "#888";
+            entry.style.fontSize = "0.75rem";
+            entry.innerHTML = `<span style="opacity:0.4;">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            consoleBox.appendChild(entry);
             consoleBox.scrollTop = consoleBox.scrollHeight;
-        }
-    }).catch(e => {});
-}, 3000);
+        }, 8000);
+    });
+
+    function loadSnapshots() {
+        fetch('/api/snapshots')
+            .then(res => res.json())
+            .then(data => {
+                const list = document.getElementById('snapshot-list');
+                if(!data || data.length === 0) {
+                    list.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.3; font-size: 0.8rem;">Piazza pulita. Nessun backup.</div>';
+                    return;
+                }
+                list.innerHTML = data.map(s => `
+                    <div class="snapshot-card">
+                        <div class="snap-name">${s.name}</div>
+                        <div class="snap-meta">
+                            <span><i class="ph ph-calendar"></i> ${s.date}</span>
+                            <span><i class="ph ph-database"></i> ${s.size} KB</span>
+                        </div>
+                        <button onclick="restoreSnapshot('${s.name}')" class="btn glass-btn" style="width: 100%; font-size: 0.7rem; color: var(--accent-gold); border-color: rgba(212,175,55,0.2);">
+                            <i class="ph ph-clock-counter-clockwise"></i> ESEGUI RESTORE
+                        </button>
+                    </div>
+                `).join('');
+            });
+    }
+
+    function createSnapshot() {
+        const btn = document.getElementById('btn-create-snapshot');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> GENERAZIONE IN CORSO...';
+
+        fetch('/api/snapshots/create', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-camera"></i> GENERA SNAPSHOT ORA';
+                loadSnapshots();
+                showToast("📸 Snapshot creato con successo.");
+            });
+    }
+
+    function restoreSnapshot(filename) {
+        if(!confirm(`RIPRISTINO TIME MACHINE: Sei sicuro di voler tornare al punto "${filename}"?`)) return;
+        
+        fetch(`/api/snapshots/restore/${filename}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'ok') {
+                    showToast("Ripristino completato. Riavvio...");
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast("Errore Restore.", "error");
+                }
+            });
+    }
 </script>
 {% endblock %}

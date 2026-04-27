@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 class="page-title" style="margin-bottom: 0;">Atelier Lab</h1>
+    <div style="background: rgba(255,255,255,0.6); padding: 8px 16px; border-radius: 20px; font-weight: 500; font-size: 0.9rem;">
+        Queue: <span id="queue-count" style="color: var(--accent-gold);">{{ products|length }}</span> Items
+    </div>
+</div>
+
+{% if products|length == 0 %}
+<div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 500px; color: var(--text-secondary);">
+    <i class="ph ph-sparkle" style="font-size: 3rem; margin-bottom: 16px; color: var(--accent-gold);"></i>
+    <h2>Tutto in ordine!</h2>
+    <p>Non ci sono prodotti in fase di validazione al momento.</p>
+</div>
+{% else %}
+
+<div class="tinder-card-container" id="cards-container">
+    {% for item in products %}
+    <div class="tinder-card {% if loop.index0 == 0 %}front{% elif loop.index0 == 1 %}behind{% else %}hidden{% endif %}" data-id="{{ item.id }}" id="card-{{ loop.index0 }}">
+        
+        <div style="display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center;">
+            <div style="font-size: 1.25rem; font-weight: 700;">{{ item.brand }} - {{ item.model }}</div>
+        </div>
+        
+        <!-- HERO VISUAL CARD -->
+        <div class="images-split">
+            <div class="image-box hero-main">
+                <!-- Simulazione Immagine Originale Drive -->
+                <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#999;">
+                    <i class="ph ph-image" style="font-size: 4rem;"></i>
+                </div>
+                <div class="image-label" style="background:transparent; backdrop-filter:none; color:var(--text-secondary); box-shadow:none;">Source Asset</div>
+            </div>
+            
+            <div class="image-box pip-overlay">
+                <!-- Simulazione Immagine Web Harvester -->
+                <div style="width:100%; height:100%; background: #eaeaea; display:flex; align-items:center; justify-content:center; color:#999;">
+                    <i class="ph ph-globe" style="font-size: 2rem;"></i>
+                </div>
+                {% if item.image_match_score %}
+                <div style="position: absolute; bottom: -24px; left: 0; width: 100%; text-align: center; font-size: 0.7rem; font-weight: 600; color: {% if item.image_match_score > 80 %}var(--accent-green){% else %}var(--accent-red){% endif %};">
+                    Match {{ item.image_match_score }}%
+                </div>
+                {% endif %}
+                {% if item.discrepancy_flag %}
+                <div style="position: absolute; top: -10px; right: -10px; background: var(--accent-red); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 600;">
+                    Alert
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- METADATA BOXES -->
+        <div class="metadata-grid" style="margin-bottom: 24px;">
+            <div class="input-group">
+                <label>Categoria</label>
+                <input type="text" class="glass-input" id="cat-{{ item.id }}" value="{{ item.category or '' }}">
+            </div>
+            <div class="input-group">
+                <label>Materiale</label>
+                <input type="text" class="glass-input" id="mat-{{ item.id }}" value="{{ item.material or '' }}">
+            </div>
+            <div class="input-group">
+                <label>Hardware</label>
+                <input type="text" class="glass-input" id="hw-{{ item.id }}" value="{{ item.hardware_type or '' }}">
+            </div>
+            <div class="input-group">
+                <label>Colore</label>
+                <input type="text" class="glass-input" id="col-{{ item.id }}" value="{{ item.color or '' }}">
+            </div>
+            <div class="input-group">
+                <label>Condizioni</label>
+                <input type="text" class="glass-input" id="cond-{{ item.id }}" value="{{ item.condition_grade or '' }}">
+            </div>
+            <div class="input-group">
+                <label>Prezzo Consigliato (€)</label>
+                <input type="number" class="glass-input" id="price-{{ item.id }}" value="{{ item.price or '' }}">
+            </div>
+            <div class="input-group" style="grid-column: span 3;">
+                <label>Tags (separati da virgola)</label>
+                <input type="text" class="glass-input" id="tags-{{ item.id }}" value="{{ item.tags or '' }}" placeholder="vintage, logo, etc.">
+            </div>
+        </div>
+
+        <!-- SMART ACTIONS -->
+        <div class="tinder-actions">
+            <button class="action-btn reject" onclick="handleSwipe('left', {{ loop.index0 }}, {{ item.id }})" title="Rifiuta (Freccia Sinistra)">
+                <i class="ph ph-x"></i>
+            </button>
+            <button class="action-btn skip" onclick="handleSwipe('bottom', {{ loop.index0 }}, {{ item.id }})" title="Skip (Freccia Giù)">
+                <i class="ph ph-arrow-u-down-right"></i>
+            </button>
+            <button class="action-btn approve" onclick="handleSwipe('right', {{ loop.index0 }}, {{ item.id }})" title="Approva (Freccia Destra)">
+                <i class="ph ph-check"></i>
+            </button>
+        </div>
+
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+    let currentIndex = 0;
+    const totalCards = {{ products|length }};
+    
+    function handleSwipe(direction, index, productId) {
+        if(index !== currentIndex) return;
+        
+        const card = document.getElementById(`card-${index}`);
+        
+        // 1. Applica classe CSS per animazione
+        if(direction === 'right') card.classList.add('card-out-right');
+        else if(direction === 'left') card.classList.add('card-out-left');
+        else if(direction === 'bottom') card.classList.add('card-out-bottom');
+
+        // 2. Raccogli dati form se approved
+        let dataToSave = {};
+        if(direction === 'right') {
+            dataToSave = {
+                category: document.getElementById(`cat-${productId}`).value,
+                tags: document.getElementById(`tags-${productId}`).value,
+                material: document.getElementById(`mat-${productId}`).value,
+                hardware_type: document.getElementById(`hw-${productId}`).value,
+                color: document.getElementById(`col-${productId}`).value,
+                condition_grade: document.getElementById(`cond-${productId}`).value,
+                price: document.getElementById(`price-${productId}`).value
+            };
+            // Mock simulato: le immagini passano alla cartella READY
+            console.log("System Log: Immagini spostate in /Ready_Images/ per SKU: " + productId);
+        }
+
+        // 3. Esegui la API Call al backend
+        fetch(`/api/lab/action/${productId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: direction, data: dataToSave })
+        }).then(() => {
+            // Aggiorna counter queue
+            document.getElementById('queue-count').innerText = totalCards - currentIndex - 1;
+        });
+
+        // 4. Prepara la prossima card
+        setTimeout(() => {
+            card.style.display = 'none';
+        }, 400);
+
+        currentIndex++;
+        
+        if (currentIndex < totalCards) {
+            const nextCard = document.getElementById(`card-${currentIndex}`);
+            nextCard.classList.remove('behind');
+            nextCard.classList.add('front');
+            
+            // Porta avanti la successiva
+            if (currentIndex + 1 < totalCards) {
+                const afterNext = document.getElementById(`card-${currentIndex+1}`);
+                afterNext.classList.remove('hidden');
+                afterNext.classList.add('behind');
+            }
+        } else {
+            // Reload o show "Finito"
+            setTimeout(() => {
+                window.location.reload();
+            }, 600);
+        }
+    }
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', function(event) {
+        if(currentIndex >= totalCards) return;
+        
+        // Evita trigger se siamo denro una textarea/input
+        const tag = event.target.tagName.toLowerCase();
+        if(tag === 'input' || tag === 'textarea') return;
+
+        const currentId = document.getElementById(`card-${currentIndex}`).getAttribute('data-id');
+
+        if (event.code === 'ArrowRight') {
+            handleSwipe('right', currentIndex, currentId);
+        } else if (event.code === 'ArrowLeft') {
+            handleSwipe('left', currentIndex, currentId);
+        } else if (event.code === 'ArrowDown') {
+            handleSwipe('bottom', currentIndex, currentId);
+        }
+    });
+
+</script>
+{% endif %}
+
+{% endblock %}

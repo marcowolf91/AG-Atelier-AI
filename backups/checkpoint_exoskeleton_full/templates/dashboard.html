@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px;">
+    <div>
+        <h1 class="page-title" style="margin-bottom: 8px;">Atelier Executive Overview</h1>
+        <p style="color: var(--text-secondary); font-size: 0.95rem;">Monitoraggio operativo unificato del Product Information Management system.</p>
+    </div>
+    
+    <div style="display: flex; gap: 16px;">
+        <div style="padding: 12px 24px; background: #FFFFFF; border: 1px solid var(--glass-border); border-radius: 6px; text-align: right; min-width: 140px;">
+            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Serp Limit QTY</div>
+            <div style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--text-primary);">
+                <span style="font-weight: 600;">{{ kpi_serp_used | default(0) }}</span> 
+                <span style="font-size: 1rem; color: var(--text-secondary);">/ 250</span>
+            </div>
+            <!-- Progress bar -->
+            <div style="width: 100%; height: 4px; background: #eee; border-radius: 2px; margin-top: 8px; overflow: hidden;">
+                <div style="height: 100%; background: var(--accent-black); width: {{ (kpi_serp_used|default(0) / 250 * 100)|int }}%;"></div>
+            </div>
+        </div>
+
+        <div style="padding: 12px 24px; background: #FFFFFF; border: 1px solid var(--glass-border); border-radius: 6px; text-align: right; display: flex; flex-direction: column; justify-content: center;">
+            <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Valore Totale Inventario</div>
+            <div style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--text-primary);">€ {{ "{:,.0f}".format(kpi_total_value|default(0)).replace(',', '.') }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- LINEAR METRICS BAR -->
+<div style="display: flex; border: 1px solid var(--glass-border); background: #FFFFFF; border-radius: 8px; margin-bottom: 40px; overflow: hidden;">
+    
+    <div style="flex: 1; padding: 24px; border-right: 1px solid var(--glass-border);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Master Inventory</span>
+            <i class="ph ph-stack" style="color: var(--text-secondary);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-primary); margin-top: 12px; line-height: 1;">{{ kpi_total }}</div>
+    </div>
+    
+    <div style="flex: 1; padding: 24px; border-right: 1px solid var(--glass-border);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Articoli In Lab</span>
+            <i class="ph ph-flask" style="color: var(--accent-gold);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-primary); margin-top: 12px; line-height: 1;">{{ kpi_validating }}</div>
+    </div>
+    
+    <div style="flex: 1; padding: 24px; border-right: 1px solid var(--glass-border);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Live Shopify</span>
+            <i class="ph ph-globe" style="color: var(--accent-green);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-primary); margin-top: 12px; line-height: 1;">{{ kpi_published }}</div>
+    </div>
+
+    <div style="flex: 1; padding: 24px; background: rgba(139, 44, 44, 0.02);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--accent-red); text-transform: uppercase; letter-spacing: 0.5px;">Errori / Timeout</span>
+            <i class="ph ph-warning-circle" style="color: var(--accent-red);"></i>
+        </div>
+        <div style="font-family: var(--font-serif); font-size: 2.2rem; color: var(--accent-red); margin-top: 12px; line-height: 1;">{{ kpi_errors }}</div>
+    </div>
+</div>
+
+<!-- GLOBAL INVENTORY ARCHIVE -->
+<div class="glass-panel" style="padding: 32px 0;">
+    <div style="padding: 0 32px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div class="section-head" style="margin: 0;"><i class="ph ph-database" style="margin-right: 8px;"></i> Archivio Globale Inventario</div>
+        
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <div style="position: relative;">
+                <i class="ph ph-magnifying-glass" style="position: absolute; left: 10px; top: 52%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.8rem;"></i>
+                <input type="text" id="dash-q" value="{{ filter_q }}" class="glass-input" placeholder="Cerca..." style="padding: 6px 10px 6px 30px; font-size: 0.8rem; width: 180px;">
+            </div>
+            
+            <select id="dash-brand" class="glass-input" style="padding: 6px 12px; font-size: 0.8rem; height: 32px;">
+                <option value="">Tutti i Brand ({{ kpi_total }})</option>
+                {% for b in brands_list %}
+                <option value="{{ b.name }}" {% if filter_brand == b.name %}selected{% endif %}>{{ b.name }} ({{ b.count }})</option>
+                {% endfor %}
+            </select>
+
+            <select id="dash-status" class="glass-input" style="padding: 6px 12px; font-size: 0.8rem; height: 32px;">
+                <option value="">Status Pipeline</option>
+                <option value="Draft" {% if filter_status == 'Draft' %}selected{% endif %}>Draft</option>
+                <option value="Processing" {% if filter_status == 'Processing' %}selected{% endif %}>Processing</option>
+                <option value="Validating" {% if filter_status == 'Validating' %}selected{% endif %}>In Lab</option>
+                <option value="Published" {% if filter_status == 'Published' %}selected{% endif %}>Live</option>
+            </select>
+
+            <button onclick="applyDashFilters()" class="btn glass-btn" style="padding: 6px 12px; height: 32px; font-size: 0.8rem; background: var(--accent-black); color: #fff;"><i class="ph ph-funnel"></i></button>
+        </div>
+    </div>
+    
+    <table class="inventory-table" style="width: 100%;">
+        <thead>
+            <tr>
+                <th style="padding-left: 32px; width: 45%;">Articolo</th>
+                <th style="padding-right: 32px; text-align: center; width: 55%;">Pipeline Avanzamento</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in recent_products %}
+            <tr>
+                <td style="padding-left: 32px;">
+                    <div style="font-weight: 500; font-size: 1rem;">{{ item.brand }} {{ item.model }}</div>
+                </td>
+                <td style="padding-right: 32px;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 16px;">
+                        
+                        <!-- 1. INGESTIONE (Titolo) -->
+                        <div class="pipeline-step {% if item.brand and item.model %}done{% endif %}" title="Ingestione Titolo">
+                            <i class="ph ph-text-aa"></i>
+                            <div class="step-label">Titolo</div>
+                        </div>
+
+                        <!-- 2. DESCRIZIONE -->
+                        <div class="pipeline-step {% if item.ai_description_it or (item.status.value != 'draft' and item.status.value != 'error') %}done{% endif %}" title="Descrizione AI">
+                            <i class="ph ph-magic-wand"></i>
+                            <div class="step-label">Desc</div>
+                        </div>
+
+                        <!-- 3. FOTO (Match) -->
+                        <div class="pipeline-step {% if item.image_match_score and item.image_match_score > 0 %}done{% endif %}" title="Ricerca Immagini">
+                            <i class="ph ph-image"></i>
+                            <div class="step-label">Foto</div>
+                        </div>
+
+                        <!-- 4. ASSOCIAZIONE (Lab) -->
+                        <div class="pipeline-step {% if item.status.value in ['validating', 'ready', 'published'] %}done{% endif %}" title="Validazione Lab">
+                            <i class="ph ph-flask"></i>
+                            <div class="step-label">Lab</div>
+                        </div>
+
+                        <!-- 5. UPLOAD (Shopify) -->
+                        <div class="pipeline-step {% if item.status.value == 'published' %}done{% endif %}" title="Live su Shopify">
+                            <i class="ph ph-cloud-arrow-up"></i>
+                            <div class="step-label">Live</div>
+                        </div>
+
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="padding: 40px 32px; text-align: center; color: var(--text-secondary);">
+                    Database vergine. Avvia l'ingestione tramite The Loom per alimentare la directory.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+.pipeline-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.2;
+    transition: all 0.3s ease;
+}
+.pipeline-step.done {
+    opacity: 1;
+    color: var(--accent-black);
+}
+.pipeline-step.done i {
+    color: var(--accent-gold);
+}
+.pipeline-step i {
+    font-size: 1.2rem;
+}
+.pipeline-step .step-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+</style>
+
+<script>
+function applyDashFilters() {
+    const q = document.getElementById('dash-q').value || '';
+    const brand = document.getElementById('dash-brand').value || '';
+    const status = document.getElementById('dash-status').value || '';
+    
+    let url = new URL(window.location.href);
+    url.searchParams.set('q', q);
+    url.searchParams.set('brand', brand);
+    url.searchParams.set('status', status);
+    window.location.href = url.toString();
+}
+</script>
+
+{% endblock %}

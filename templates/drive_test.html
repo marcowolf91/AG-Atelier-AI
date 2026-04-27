@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Drive Sandbox Test</div>
+
+<div class="glass-panel" style="padding: 24px; border-left: 4px solid var(--accent-gold);">
+    <h2 style="color: #fff; margin-bottom: 10px;">Test di Connessione Diretto</h2>
+    <p style="color: var(--text-secondary); font-size: 0.85rem;">Questa pagina serve a verificare se il browser riesce a leggere i dati da Google Drive senza interferenze dall'IA o da altre funzioni complesse.</p>
+    
+    <div style="margin-top: 20px; display: flex; gap: 10px;">
+        <button onclick="runTest()" class="btn attr-primary">AVVIA TEST DIAGNOSTICO</button>
+        <button onclick="location.reload()" class="btn glass-btn">RICARICA PAGINA</button>
+    </div>
+</div>
+
+<div id="test-results" style="margin-top: 30px;">
+    <div class="glass-panel" style="padding: 20px;">
+        <div style="font-weight: 800; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+            <span>Log di Sistema</span>
+            <span id="status-badge" style="color: #fff; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; font-size: 0.6rem;">IDLE</span>
+        </div>
+        <div id="log-console" style="background: #000; padding: 15px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #0f0; max-height: 400px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05);">
+            > Pronto per il test. Clicca "AVVIA TEST DIAGNOSTICO"...
+        </div>
+    </div>
+</div>
+
+<div id="image-preview-sandbox" style="margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;">
+    <!-- Qui appariranno le miniature se il test passa -->
+</div>
+
+<script>
+    function log(msg, type = 'info') {
+        const console = document.getElementById('log-console');
+        const time = new Date().toLocaleTimeString();
+        let color = '#0f0';
+        if (type === 'error') color = '#f44';
+        if (type === 'warn') color = '#fb0';
+        
+        console.innerHTML += `<div style="color: ${color}; margin-bottom: 4px;">[${time}] ${msg}</div>`;
+        console.scrollTop = console.scrollHeight;
+    }
+
+    async function runTest() {
+        document.getElementById('status-badge').innerText = 'TESTING...';
+        document.getElementById('status-badge').style.background = '#fb0';
+        document.getElementById('log-console').innerHTML = '> Avvio test diagnostico...<br>';
+        document.getElementById('image-preview-sandbox').innerHTML = '';
+        
+        log("1. Controllo URL API: /api/darkroom/images");
+        
+        try {
+            log("2. Invio richiesta fetch...");
+            const t0 = performance.now();
+            const res = await fetch('/api/darkroom/images?refresh=true&_=' + Date.now());
+            const t1 = performance.now();
+            
+            log(`3. Risposta ricevuta in ${(t1-t0).toFixed(0)}ms. Status: ${res.status}`);
+            
+            if (!res.ok) {
+                log(`ERRORE: Il server ha risposto con ${res.status}`, 'error');
+                return;
+            }
+            
+            log("4. Parsing JSON dei dati...");
+            const data = await res.json();
+            
+            if (!Array.isArray(data)) {
+                log("ERRORE: I dati ricevuti non sono una lista!", 'error');
+                console.dir(data);
+                return;
+            }
+            
+            log(`5. SUCCESSO! Ricevuti ${data.length} asset da Drive.`, 'info');
+            document.getElementById('status-badge').innerText = 'SUCCESS';
+            document.getElementById('status-badge').style.background = '#10b981';
+            
+            // Proviamo a mostrare le prime 20
+            log("6. Rendering anteprime di test (prime 20)...");
+            const container = document.getElementById('image-preview-sandbox');
+            data.slice(0, 20).forEach(img => {
+                const div = document.createElement('div');
+                div.style.background = '#1a1a1a';
+                div.style.padding = '5px';
+                div.style.borderRadius = '8px';
+                div.style.textAlign = 'center';
+                
+                // Usiamo il proxy per sicurezza
+                const imgSrc = img.thumbnailLink ? img.thumbnailLink.replace('=s220', '=s400') : `/api/drive/thumbnail/${img.id}`;
+                
+                div.innerHTML = `
+                    <img src="${imgSrc}" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; margin-bottom: 5px;" onerror="this.src='https://placehold.co/100x100?text=Error'">
+                    <div style="font-size: 0.5rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${img.name}</div>
+                `;
+                container.appendChild(div);
+            });
+            log("Test completato con successo.");
+            
+        } catch (err) {
+            log(`CRASH TOTALE: ${err.message}`, 'error');
+            console.error(err);
+            document.getElementById('status-badge').innerText = 'CRASHED';
+            document.getElementById('status-badge').style.background = '#f44';
+        }
+    }
+</script>
+{% endblock %}

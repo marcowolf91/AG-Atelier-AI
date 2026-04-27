@@ -3,18 +3,13 @@
 {% block content %}
 <div class="page-title">Catalogo Centrale <span style="font-size:1.2rem; color:var(--text-secondary);">(Live Inventory)</span></div>
 
-<div class="glass-panel" style="padding: 32px; margin-bottom: 24px;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
-        <div style="flex-grow: 1;">
-            <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary); margin-bottom: 8px;">Master Inventory</h2>
-            <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 600px;">
-                Gestisci, ritocca e forza la sincronizzazione in tempo reale su Shopify di tutti i prodotti Validati (Ready) o Pubblicati (Published).
-            </p>
-        </div>
-        
-        <button onclick="forceSyncAll()" id="btn-sync-all" class="btn glass-btn attr-primary" style="background: var(--accent-black); border-color: var(--glass-border); white-space: nowrap; margin-left: 24px;">
-            <i class="ph ph-arrows-clockwise"></i> Sync Completo Server
-        </button>
+<div class="glass-panel" style="padding: 24px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; border-left: 4px solid var(--accent-gold);">
+    <div>
+        <h2 style="font-weight: 700; font-size: 1.1rem; margin-bottom: 4px;"><i class="ph ph-shield-check" style="color:var(--accent-gold);"></i> The Sentinel (Audit Mode)</h2>
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">Analisi automatica della qualità dati per la sicurezza dello Storefront.</p>
+    </div>
+    <div style="display: flex; gap: 16px;">
+        <button onclick="location.reload()" class="btn glass-btn" style="padding: 10px;"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
     </div>
 </div>
 
@@ -25,29 +20,55 @@
             <tr>
                 <th>Immagine</th>
                 <th>Brand / Modello</th>
-                <th>SKU</th>
+                <th style="width: 200px;">Sentinel Audit (Anomalie)</th>
                 <th>Prezzo (€)</th>
                 <th>Status Shopify</th>
-                <th>Azioni Singole</th>
+                <th style="text-align: right; padding-right: 20px;">Azioni</th>
             </tr>
         </thead>
         <tbody>
             {% for p in products %}
-            <tr>
+            {% set has_images = p.matched_images_json and p.matched_images_json != '[]' %}
+            {% set has_price = p.price and p.price > 0 %}
+            {% set has_seo = p.seo_title %}
+            
+            <tr style="{% if not has_price or not has_images %}background:rgba(239, 68, 68, 0.02);{% endif %}">
                 <td>
-                    <div style="width: 48px; height: 48px; background: rgba(0,0,0,0.05); border-radius: 8px; display:flex; align-items:center; justify-content:center;">
-                        <i class="ph ph-camera" style="font-size: 1.5rem; color: rgba(0,0,0,0.3);"></i>
+                    <div style="width: 48px; height: 48px; background: rgba(0,0,0,0.05); border-radius: 8px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                        {% if has_images %}
+                            <i class="ph ph-image-square" style="font-size: 1.5rem; color: var(--accent-green);"></i>
+                        {% else %}
+                            <i class="ph ph-image-square" style="font-size: 1.5rem; color: #ccc;"></i>
+                        {% endif %}
                     </div>
                 </td>
-                <td style="font-weight: 500;">{{ p.brand }}<br><span style="font-weight: 400; font-size:0.9rem; color:var(--text-secondary)">{{ p.model }}</span></td>
-                <td style="font-family: var(--font-serif); color: var(--text-secondary);">{{ p.sku }}</td>
-                <td style="font-family: var(--font-serif);">
-                    <input type="number" id="catalog-price-{{ p.id }}" value="{{ p.price or 0 }}" class="glass-input" style="width: 100px; padding: 4px; font-size: 0.9rem;">
+                <td style="font-weight: 600;">
+                    {{ p.brand }}<br>
+                    <span style="font-weight: 400; font-size:0.8rem; color:var(--text-secondary)">{{ p.model }}</span>
                 </td>
-                <td><span class="badge {{ p.status|lower }}">{{ p.status }}</span></td>
                 <td>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        {% if not has_price %}
+                            <span class="sentinel-flag error" title="Prezzo non impostato!"><i class="ph ph-currency-eur"></i> No Price</span>
+                        {% endif %}
+                        {% if not has_images %}
+                            <span class="sentinel-flag error" title="Nessun asset drive trovato!"><i class="ph ph-image-broken"></i> No Images</span>
+                        {% endif %}
+                        {% if not has_seo %}
+                            <span class="sentinel-flag warn" title="Testo SEO non generato."><i class="ph ph-text-aa"></i> No SEO</span>
+                        {% endif %}
+                        {% if has_price and has_images and has_seo %}
+                            <span class="sentinel-flag ok"><i class="ph ph-seal-check"></i> High Quality</span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td style="font-family: var(--font-serif);">
+                    <input type="number" id="catalog-price-{{ p.id }}" value="{{ p.price or 0 }}" class="glass-input" style="width: 100px; padding: 4px; font-size: 0.9rem; {% if not has_price %}border-color:var(--accent-red);{% endif %}">
+                </td>
+                <td><span class="badge {{ (p.status.name if p.status else 'draft')|lower }}">{{ p.status.name if p.status else 'DRAFT' }}</span></td>
+                <td style="text-align: right; padding-right: 20px;">
                     <button class="btn glass-btn" onclick="saveAndSync({{ p.id }})" style="padding: 6px 12px; font-size: 0.85rem;" id="btn-ss-{{ p.id }}">
-                        <i class="ph ph-cloud-arrow-up"></i> Salva & Aggiorna Live
+                        <i class="ph ph-cloud-arrow-up"></i> Aggiorna Live
                     </button>
                 </td>
             </tr>
@@ -59,6 +80,13 @@
         </tbody>
     </table>
 </div>
+
+<style>
+.sentinel-flag { font-size: 0.6rem; font-weight: 800; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; text-transform: uppercase; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.3); }
+.sentinel-flag.error { color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
+.sentinel-flag.warn { color: #f59e0b; border-color: rgba(245, 158, 11, 0.2); }
+.sentinel-flag.ok { color: #10b981; border-color: rgba(16, 185, 129, 0.2); }
+</style>
 
 <script>
 function saveAndSync(id) {
@@ -78,7 +106,7 @@ function saveAndSync(id) {
         btn.innerHTML = "<i class='ph ph-check'></i> Aggiornato";
         btn.style.color = "var(--accent-green)";
         setTimeout(() => {
-            btn.innerHTML = "<i class='ph ph-cloud-arrow-up'></i> Salva & Aggiorna Live";
+            btn.innerHTML = "<i class='ph ph-cloud-arrow-up'></i> Aggiorna Live";
             btn.style.color = "var(--text-primary)";
             btn.disabled = false;
         }, 2000);

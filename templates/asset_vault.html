@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Asset Vault <span style="font-size:1.2rem; color:var(--text-secondary);">(The Deep Mapper)</span></div>
+
+<div class="glass-panel" style="margin-bottom: 32px; padding: 24px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--accent-gold);">
+    <div>
+        <h2 style="font-weight: 700; font-size: 1.2rem; margin-bottom: 4px; color:#fff;">Governance Asset & Quality Audit</h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">Motore di mappatura intelligente tra PIM e Google Drive con Deep Renaming Batch.</p>
+    </div>
+    <div style="display: flex; gap: 16px;">
+        <button class="btn glass-btn" onclick="exportReport()"><i class="ph-duotone ph-export"></i> Report Excel</button>
+        <button class="btn attr-primary" id="btn-batch-rename" onclick="triggerBatchRename()">
+            <i class="ph-duotone ph-magic-wand"></i> Batch Deep Rename ({{ products|selectattr('status.value', 'equalto', 'Ready')|list|length }})
+        </button>
+    </div>
+</div>
+
+<!-- Grid Header -->
+<div style="display: grid; grid-template-columns: 2fr 1fr 1fr 120px 180px; gap: 16px; padding: 0 16px 12px; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px;">
+    <div>Identità & SEO Meta</div>
+    <div>Specifiche Tecniche</div>
+    <div>Stato Mappatura Drive</div>
+    <div style="text-align: center;">Fiducia</div>
+    <div style="text-align: right;">Azioni</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px;">
+    {% for p in products %}
+    <div class="glass-panel bento-item" style="padding: 20px; display: grid; grid-template-columns: 2fr 1fr 1fr 120px 180px; gap: 16px; align-items: center;">
+        <!-- Info Prodotto -->
+        <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="width: 50px; height: 50px; border-radius: 12px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--glass-border);">
+                {% if p.thumb %}
+                    <img src="{{ p.thumb }}" style="width: 100%; height: 100%; object-fit: cover;">
+                {% else %}
+                    <i class="ph-duotone ph-image-square" style="font-size: 1.5rem; color: #333;"></i>
+                {% endif %}
+            </div>
+            <div>
+                <div style="font-weight: 700; font-size: 0.9rem; color: #fff; margin-bottom: 4px;">{{ p.brand }} {{ p.model }}</div>
+                <div style="font-size: 0.75rem; color: var(--accent-gold); font-weight: 600; opacity: 0.8;">{{ p.seo_title or 'TITOLO NON CERTIFICATO' }}</div>
+            </div>
+        </div>
+
+        <!-- Tech Spec -->
+        <div style="font-size: 0.75rem; line-height: 1.4; color: var(--text-secondary);">
+            <div><i class="ph ph-swatches"></i> {{ p.color or '-' }}</div>
+            <div><i class="ph ph-cube"></i> {{ p.material or '-' }}</div>
+        </div>
+
+        <!-- Drive Mapping -->
+        <div>
+            {% if p.drive_folder_id %}
+                <div style="display:flex; align-items:center; gap:8px; color: #4ade80; font-size: 0.8rem; font-weight: 600;">
+                    <i class="ph-duotone ph-folder-check" style="font-size: 1.2rem;"></i>
+                    <span>CONNESSO</span>
+                </div>
+                <div style="font-size: 0.65rem; color: #888; margin-top: 4px; font-family: monospace;">ID: {{ p.drive_folder_id[:12] }}...</div>
+            {% else %}
+                <div style="display:flex; align-items:center; gap:8px; color: #ef4444; font-size: 0.8rem; font-weight: 600;">
+                    <i class="ph-duotone ph-folder-not-found" style="font-size: 1.2rem;"></i>
+                    <span>SCOLLEGATO</span>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Confidence Gauge -->
+        <div style="text-align: center;">
+            {% set conf = (p.match_confidence or 0)|int %}
+            {% set conf_color = "#ef4444" if conf < 50 else ("#f59e0b" if conf < 90 else "#22c55e") %}
+            <div style="position: relative; width: 60px; height: 60px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                <svg width="60" height="60" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8" />
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="{{ conf_color }}" stroke-width="8" stroke-dasharray="251.2" stroke-dashoffset="{{ 251.2 * (1 - conf / 100) }}" stroke-linecap="round" />
+                </svg>
+                <span style="position: absolute; font-size: 0.75rem; font-weight: 800; color: {{ conf_color }};">{{ conf }}%</span>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button onclick="openAuditModal({{ p.id }})" class="btn glass-btn" style="width: 40px; height: 40px; padding: 0; justify-content: center;" title="Edit / Match">
+                <i class="ph ph-pencil-simple"></i>
+            </button>
+            <button onclick="renameAssets({{ p.id }}, this)" class="btn glass-btn" style="width: 40px; height: 40px; padding: 0; justify-content: center; color: var(--accent-gold);" title="Deep Rename" {% if not p.seo_title or not p.drive_folder_id %}disabled style="opacity:0.3;"{% endif %}>
+                <i class="ph ph-magic-wand"></i>
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+.bento-item { border-left: 2px solid transparent; }
+.bento-item:hover { border-left-color: var(--accent-gold); background: rgba(255,255,255,0.02); }
+</style>
+
+<script>
+    async function triggerBatchRename() {
+        const btn = document.getElementById('btn-batch-rename');
+        if(!confirm("Avviare il Deep Renaming massivo su tutti i prodotti READY? Operazione irreversibile su Drive.")) return;
+
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Elaborazione Deep...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/vault/seo-rename-batch', { method: 'POST' });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                showToast(`🚀 Batch completato! ${data.message}`);
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showToast(`❌ Errore Batch: ${data.error || data.message}`);
+            }
+        } catch(e) {
+            showToast("❌ Errore sistema durante il Batch.");
+        } finally {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    }
+
+    async function renameAssets(pid, btn) {
+        showToast("🪄 Avvio Deep Renaming per singolo prodotto...");
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`/api/vault/seo-rename/${pid}`, { method: 'POST' });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                showToast("✅ Rinomina completata correttamente su Drive.");
+            } else {
+                showToast(`⚠️ Errore: ${data.message || data.error}`);
+            }
+        } catch(e) {
+            showToast("❌ Errore di rete.");
+        } finally {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        }
+    }
+</script>
+
+<!-- Mantieni modale Audit esistente ma con stile Neo-Glass -->
+<div id="audit-modal" class="modal-overlay" style="display:none; z-index: 10001;">
+    <div class="modal-content glass-panel" style="max-width: 600px; padding: 32px; border-top: 4px solid var(--accent-gold);">
+        <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 24px;"><i class="ph ph-fingerprint" style="color:var(--accent-gold);"></i> Audit Asset Mapper</h2>
+        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 24px;">Collega manualmente una cartella Drive se il match automatico non è risolutivo.</p>
+        
+        <div style="margin-bottom: 24px;">
+            <div style="display:flex; gap:12px;">
+                <input type="text" id="drive-search-input" class="glass-input" style="flex:1; background:rgba(255,255,255,0.05); padding:12px; border: 1px solid var(--glass-border); border-radius:10px;" placeholder="Nome Modello, SKU o Brand...">
+                <button onclick="searchDriveFolders()" class="btn attr-primary">Cerca</button>
+            </div>
+        </div>
+        
+        <div id="search-results" style="max-height: 250px; overflow-y:auto; border-radius:12px; background:rgba(0,0,0,0.2); margin-bottom: 24px; border: 1px solid var(--glass-border);"></div>
+
+        <div style="text-align: right; display:flex; justify-content:flex-end; gap:12px;">
+            <button onclick="closeAuditModal()" class="btn glass-btn">Chiudi</button>
+        </div>
+        <input type="hidden" id="modal-product-id">
+    </div>
+</div>
+
+<style>
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; }
+.glass-input::placeholder { color: #555; }
+</style>
+
+<script>
+let currentAuditPid = null;
+function openAuditModal(pid) {
+    currentAuditPid = pid;
+    document.getElementById('modal-product-id').value = pid;
+    document.getElementById('audit-modal').style.display = 'flex';
+    document.getElementById('search-results').innerHTML = '<p style="padding:20px; text-align:center; color:#555;">Inserisci termini per cercare...</p>';
+}
+function closeAuditModal() { document.getElementById('audit-modal').style.display = 'none'; }
+
+async function searchDriveFolders() {
+    const q = document.getElementById('drive-search-input').value;
+    if(!q) return;
+    const resDiv = document.getElementById('search-results');
+    resDiv.innerHTML = '<p style="padding:20px; text-align:center;"><i class="ph ph-spinner ph-spin"></i> Scansione Drive in corso...</p>';
+    try {
+        const response = await fetch(`/api/drive/search-folder?q=${encodeURIComponent(q)}`);
+        const data = await response.json();
+        if(data.folders && data.folders.length > 0) {
+            let html = '';
+            data.folders.forEach(f => {
+                html += `
+                    <div onclick="confirmManualMatch('${f.id}', '${f.name.replace(/'/g, "\\'")}')" style="padding:16px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05); display:flex; align-items:center; gap:12px; transition:all 0.2s;">
+                        <i class="ph-duotone ph-folder" style="font-size:1.4rem; color:var(--accent-gold);"></i>
+                        <span style="font-size:0.9rem; font-weight:600; color:#fff;">${f.name}</span>
+                        <i class="ph ph-link-simple" style="margin-left:auto; color:#444;"></i>
+                    </div>
+                `;
+            });
+            resDiv.innerHTML = html;
+        } else {
+            resDiv.innerHTML = '<p style="padding:20px; text-align:center; color:#666;">Nessuna cartella trovata.</p>';
+        }
+    } catch(e) { resDiv.innerHTML = '<p style="padding:20px; text-align:center; color:red;">Errore di rete.</p>'; }
+}
+
+async function confirmManualMatch(fid, fname) {
+    if(!confirm(`Collegare la cartella "${fname}" a questo prodotto?`)) return;
+    try {
+        const res = await fetch('/api/vault/manual-match', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ product_id: currentAuditPid, folder_id: fid })
+        });
+        const data = await res.json();
+        if(data.status === 'ok') {
+            showToast("🔗 Collegamento Manuale effettuato.");
+            location.reload();
+        }
+    } catch(e) { showToast("❌ Errore collegamento."); }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Matching Station <span style="font-size:0.8rem; color:var(--text-secondary); margin-left:10px;">(Research & SEO Hub)</span></div>
+
+<div style="display: grid; grid-template-columns: 240px 1fr 380px; gap: 20px; height: calc(100vh - 180px); min-height: 600px;">
+    
+    <!-- COL 1: QUEUE -->
+    <div class="glass-panel" style="padding: 16px; display: flex; flex-direction: column;">
+        <div style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+            <span>Coda Matching</span>
+            <span id="match-queue-count" class="badge-count">0</span>
+        </div>
+        <div id="match-asset-queue" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: flex-start;">
+            <!-- Populated via JS -->
+        </div>
+        <button onclick="window.location.href='/the-darkroom'" class="btn glass-btn" style="margin-top: 15px; font-size: 0.6rem; width: 100%;">
+            <i class="ph ph-arrow-left"></i> TORNA AL BROWSER
+        </button>
+    </div>
+
+    <!-- COL 2: WORKBOARD (PREVIEW SELEZIONE) -->
+    <div class="glass-panel" style="padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05);">
+        <div style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <span>Tavolo di Lavoro</span>
+            <span id="selected-count-badge" style="background: var(--accent-gold); color:#000; padding:2px 8px; border-radius:10px; font-size:0.6rem;">0 ASSET</span>
+        </div>
+        
+        <div id="workboard-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px;">
+            <!-- Qui appariranno le foto selezionate -->
+            <div id="workboard-empty" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-secondary);">
+                <i class="ph ph-selection-plus" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.2;"></i>
+                <p style="font-size: 0.75rem;">Seleziona le foto a sinistra per iniziare il matching</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- COL 3: PRODUCT SEARCH -->
+    <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column;">
+        <div style="font-size: 0.65rem; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Ricerca Catalogo</div>
+        <div style="position: relative; margin-bottom: 20px;">
+            <input type="text" id="product-search" class="glass-input" placeholder="Cerca prodotto..." oninput="handleProductSearch(this.value)" style="padding-left: 35px; height: 40px; font-size: 0.8rem;">
+            <i class="ph ph-magnifying-glass" style="position: absolute; left: 12px; top: 12px; color: var(--text-secondary);"></i>
+        </div>
+        <div id="product-candidates-list" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; padding-right: 5px; flex-shrink: 0;">
+            <!-- Populated via JS -->
+        </div>
+        <div id="matching-actions-area" style="padding: 15px; border: 2px solid var(--accent-gold); display: none; background: rgba(184, 146, 64, 0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <div style="font-size: 0.6rem; color: var(--accent-gold); font-weight: 800; margin-bottom: 10px; text-align: center; text-transform: uppercase; letter-spacing: 1px;">
+                <i class="ph ph-sparkle"></i> Pronto per l'Invio
+            </div>
+            <label style="font-size: 0.55rem; color: var(--text-secondary); display: block; margin-bottom: 5px;">SEO FILENAME SUGGERITO</label>
+            <input type="text" id="seo-filename" class="glass-input" style="margin-bottom: 15px; font-family: monospace; font-size: 0.75rem; color: var(--accent-gold); height: 40px; border: 1px solid rgba(255,255,255,0.1);">
+            <button id="btn-associate" onclick="finalizeAssociation()" class="btn attr-primary" style="width: 100%; height: 50px; font-weight: 900; font-size: 0.85rem; text-transform: uppercase;">
+                ASSOCIA & PUBBLICA <i class="ph ph-paper-plane-right"></i>
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<!-- Toast Notification Container -->
+<div id="toast-container" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
+<script src="/static/js/darkroom_core.js"></script>
+<script>
+    const fileIds = "{{ file_ids }}".split(',').filter(id => id.length > 0);
+    let queueImages = [];
+    let selectedAssets = []; // Memorizziamo direttamente gli oggetti immagine
+    let selectedProductId = null;
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const icon = type === 'success' ? 'ph ph-check-circle' : 'ph ph-warning-circle';
+        const color = type === 'success' ? '#4CAF50' : '#f44336';
+        
+        toast.style.cssText = `
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 50px;
+            border: 1px solid ${color};
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideUp 0.3s ease-out forwards;
+            pointer-events: auto;
+        `;
+        
+        toast.innerHTML = `<i class="${icon}" style="color:${color}; font-size:1.2rem;"></i> ${message}`;
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.animation = 'slideDown 0.3s ease-in forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    // Aggiungiamo le animazioni CSS al volo
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(20px); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    async function init() {
+        await DarkroomCore.syncDrive(false);
+        
+        if (fileIds.length > 0) {
+            queueImages = DarkroomCore.allImages.filter(img => fileIds.includes(img.id));
+            if (queueImages.length < fileIds.length) {
+                const missingIds = fileIds.filter(id => !queueImages.find(img => img.id === id));
+                try {
+                    const res = await fetch('/api/darkroom/files-by-ids', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ids: missingIds})
+                    });
+                    const directFiles = await res.json();
+                    queueImages = [...queueImages, ...directFiles];
+                    DarkroomCore.allImages = [...DarkroomCore.allImages, ...directFiles];
+                } catch(e) {}
+            }
+        } else {
+            queueImages = DarkroomCore.allImages.filter(img => {
+                const name = (img.name || "").toLowerCase();
+                const isJpg = name.endsWith('.jpg') || name.endsWith('.jpeg');
+                return isJpg && !img.associated;
+            });
+        }
+        
+        renderQueue();
+        handleProductSearch('');
+    }
+
+    function renderQueue() {
+        const queue = document.getElementById('match-asset-queue');
+        document.getElementById('match-queue-count').innerText = queueImages.length;
+        queue.innerHTML = '';
+
+        queueImages.forEach(img => {
+            const isSelected = selectedAssets.some(x => String(x.id) === String(img.id));
+            const item = document.createElement('div');
+            item.style.cssText = `aspect-ratio:1; border-radius:8px; overflow:hidden; background:#000; cursor:pointer; border:2px solid ${isSelected ? 'var(--accent-gold)' : 'transparent'}; position:relative;`;
+            item.onclick = () => toggleQueueSelection(img);
+            item.innerHTML = `
+                <img src="/api/drive/proxy/${img.id}" style="width:100%; height:100%; object-fit:cover; opacity:${isSelected ? '1' : '0.6'};">
+                ${isSelected ? '<div style="position:absolute; top:5px; right:5px; background:var(--accent-gold); color:#000; border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; font-weight:900;"><i class="ph ph-check"></i></div>' : ''}
+            `;
+            queue.appendChild(item);
+        });
+
+        updateWorkboard();
+    }
+
+    function toggleQueueSelection(img) {
+        const idx = selectedAssets.findIndex(x => String(x.id) === String(img.id));
+        if (idx === -1) {
+            selectedAssets.push(img);
+        } else {
+            selectedAssets.splice(idx, 1);
+        }
+        renderQueue();
+    }
+
+    function updateWorkboard() {
+        const grid = document.getElementById('workboard-grid');
+        const empty = document.getElementById('workboard-empty');
+        const badge = document.getElementById('selected-count-badge');
+        
+        if (!grid || !badge) return;
+
+        badge.innerText = `${selectedAssets.length} ASSET`;
+        
+        if (selectedAssets.length === 0) {
+            grid.innerHTML = '';
+            if (empty) {
+                grid.appendChild(empty);
+                empty.style.display = 'block';
+            }
+            return;
+        }
+
+        if (empty) empty.style.display = 'none';
+        
+        // Pulizia totale della griglia prima del nuovo render
+        grid.innerHTML = '';
+        
+        selectedAssets.forEach(img => {
+            const card = document.createElement('div');
+            card.className = 'workboard-card';
+            card.style.cssText = 'aspect-ratio:1; border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,0.1); background:#000; position:relative; min-width: 120px;';
+            card.innerHTML = `
+                <img src="/api/drive/proxy/${img.id}" style="width:100%; height:100%; object-fit:contain; display:block;">
+                <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.8); padding:5px; font-size:0.55rem; color:#fff; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border-top:1px solid rgba(255,255,255,0.1);">
+                    ${img.name}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+        
+        console.log(`Rendered ${selectedAssets.length} cards in workboard.`);
+    }
+
+    let lastSearchResults = [];
+
+    async function handleProductSearch(query) {
+        const list = document.getElementById('product-candidates-list');
+        list.innerHTML = '<div style="text-align:center; padding:20px;"><i class="ph ph-circle-notch ph-spin"></i></div>';
+        
+        lastSearchResults = await DarkroomCore.fetchProducts(query, false);
+        renderProductResults();
+    }
+
+    function renderProductResults() {
+        const list = document.getElementById('product-candidates-list');
+        list.innerHTML = '';
+        
+        lastSearchResults.forEach(p => {
+            if (!p.model) return;
+
+            const card = document.createElement('div');
+            const isSelected = (selectedProductId === p.id);
+            
+            // Verifichiamo se ha già immagini (matched_images_json è una stringa JSON o null)
+            let imageCount = 0;
+            try {
+                if (p.matched_images_json) {
+                    const imgs = JSON.parse(p.matched_images_json);
+                    imageCount = Array.isArray(imgs) ? imgs.length : 0;
+                }
+            } catch(e) {}
+
+            card.className = 'glass-panel product-card';
+            card.style.cssText = `padding:12px; cursor:pointer; border:1px solid ${isSelected ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)'}; transition:0.2s; position:relative; ${imageCount > 0 ? 'border-left: 3px solid #4CAF50;' : ''}`;
+            card.onclick = () => selectProductForAssociation(p);
+            
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+                    <div style="font-size:0.6rem; color:var(--accent-gold); font-weight:800; text-transform:uppercase;">${p.brand}</div>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        ${imageCount > 0 ? `<span style="font-size:0.5rem; background:#4CAF50; color:#fff; padding:1px 5px; border-radius:3px; font-weight:700;"><i class="ph ph-images"></i> ${imageCount} MATCHED</span>` : ''}
+                        ${p.material ? `<span style="font-size:0.5rem; background:rgba(255,255,255,0.1); padding:1px 5px; border-radius:3px; color:#fff; font-weight:700; border:1px solid var(--accent-gold);">${p.material}</span>` : ''}
+                        <div style="font-size:0.55rem; color:var(--text-secondary); font-family:monospace;">${p.sku || ''}</div>
+                    </div>
+                </div>
+                <div style="font-size:0.85rem; color:#fff; font-weight:700; margin-bottom:6px;">${p.model}</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    ${p.size ? `<span style="font-size:0.55rem; background:var(--accent-gold); padding:2px 6px; border-radius:4px; color:#000; font-weight:800;">T. ${p.size}</span>` : ''}
+                </div>
+                ${isSelected ? '<div style="position:absolute; top:-5px; right:-5px; background:var(--accent-gold); color:#000; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.8rem; box-shadow:0 0 10px var(--accent-gold);"><i class="ph ph-check-circle"></i></div>' : ''}
+            `;
+            list.appendChild(card);
+        });
+    }
+
+    function selectProductForAssociation(p) {
+        selectedProductId = p.id;
+        document.getElementById('matching-actions-area').style.display = 'block';
+        const seoInput = document.getElementById('seo-filename');
+        
+        let parts = [p.brand, p.model];
+        if (p.material) parts.push(p.material);
+        const baseName = parts.join('-').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        
+        seoInput.value = baseName;
+        renderProductResults();
+    }
+
+    async function aiSuggestProduct() {
+        const focusId = selectedAssets.length > 0 ? selectedAssets[selectedAssets.length - 1].id : null;
+        if (!focusId) {
+            alert("Seleziona almeno un'immagine per ricevere un suggerimento AI.");
+            return;
+        }
+        const loader = document.getElementById('ai-loader');
+        if (loader) loader.style.display = 'inline-block';
+        try {
+            const res = await fetch(`/api/darkroom/analyze-vision?file_id=${focusId}`);
+            const data = await res.json();
+            if (data.suggestion) {
+                document.getElementById('product-search').value = data.suggestion;
+                handleProductSearch(data.suggestion);
+            }
+        } catch(e) {
+            console.error("AI Suggestion error:", e);
+        } finally {
+            if (loader) loader.style.display = 'none';
+        }
+    }
+
+    async function finalizeAssociation() {
+        if (selectedAssets.length === 0 || !selectedProductId) {
+            alert("Seleziona almeno una foto e un prodotto.");
+            return;
+        }
+        
+        const btn = document.getElementById('btn-associate');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> PUBBLICAZIONE...';
+        
+        const payload = {
+            product_id: selectedProductId,
+            file_ids: selectedAssets.map(x => x.id),
+            seo_name: document.getElementById('seo-filename').value
+        };
+
+        try {
+            const res = await fetch('/api/darkroom/associate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (res.ok) {
+                const associatedIds = selectedAssets.map(x => x.id);
+                queueImages = queueImages.filter(img => !associatedIds.includes(img.id));
+                selectedAssets = [];
+                selectedProductId = null;
+                document.getElementById('matching-actions-area').style.display = 'none';
+                
+                showToast(`Associazione completata! ${associatedIds.length} immagini collegate.`);
+                
+                if (queueImages.length === 0) {
+                    setTimeout(() => {
+                        alert("Tutti gli asset associati!");
+                        window.location.href = '/the-darkroom';
+                    }, 1000);
+                } else {
+                    renderQueue();
+                    renderProductResults();
+                }
+            } else {
+                const err = await res.json();
+                showToast("Errore: " + (err.message || "Sconosciuto"), "error");
+            }
+        } catch(e) {
+            showToast("Errore di rete: impossibile completare l'azione.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    init();
+</script>
+
+<style>
+.badge-count { background: var(--accent-gold); color: #000; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; }
+.product-card:hover { background: rgba(255,255,255,0.08); }
+</style>
+{% endblock %}

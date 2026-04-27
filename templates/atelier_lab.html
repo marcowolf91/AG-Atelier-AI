@@ -1,193 +1,395 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-    <h1 class="page-title" style="margin-bottom: 0;">Atelier Lab</h1>
-    <div style="background: rgba(255,255,255,0.6); padding: 8px 16px; border-radius: 20px; font-weight: 500; font-size: 0.9rem;">
-        Queue: <span id="queue-count" style="color: var(--accent-gold);">{{ products|length }}</span> Items
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+    <div>
+        <h1 class="page-title" style="margin-bottom: 4px;">Atelier Lab <span style="font-weight:400; font-size:1rem; color:var(--text-secondary);">(Certification Hub)</span></h1>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">Certificazione qualitativa e validazione finale degli asset prima della pubblicazione.</p>
+    </div>
+    <div class="glass-panel" style="padding: 10px 20px; border-radius: 40px; border: 1px solid var(--accent-gold); display: flex; align-items: center; gap: 12px; background: rgba(212,175,55,0.05);">
+        <div class="pulse-dot"></div>
+        <span style="font-weight: 700; font-size: 0.85rem; color: #fff;">LIVE QUEUE: <span id="queue-count" style="color: var(--accent-gold);">{{ products|length }}</span></span>
+    </div>
+</div>
+
+<!-- Lab Filters -->
+<div class="glass-panel" style="margin-bottom: 32px; padding: 20px; display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 16px; align-items: center;">
+    <div>
+        <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; display: block;">Settore / Categoria</label>
+        <select id="filter-cat" class="glass-input" style="width: 100%;" onchange="applyLabFilters()">
+            <option value="">Tutti i Settori</option>
+            <option value="Borse" {% if current_category == 'Borse' %}selected{% endif %}>👜 Borse</option>
+            <option value="Scarpe" {% if current_category == 'Scarpe' %}selected{% endif %}>👠 Calzature</option>
+            <option value="Accessori" {% if current_category == 'Accessori' %}selected{% endif %}>🧣 Accessori</option>
+            <option value="Gioielli" {% if current_category == 'Gioielli' %}selected{% endif %}>💍 Gioielleria</option>
+        </select>
+    </div>
+    <div>
+        <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; display: block;">Maison / Brand</label>
+        <select id="filter-brand" class="glass-input" style="width: 100%;" onchange="applyLabFilters()">
+            <option value="">Tutte le Maison</option>
+            {% for b in brands %}
+            <option value="{{ b }}" {% if current_brand == b %}selected{% endif %}>{{ b }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div style="visibility: hidden;"></div>
+    <div style="display: flex; gap: 8px; align-items: flex-end; height: 100%; padding-top: 24px;">
+        <button onclick="window.location.href='/atelier-lab'" class="btn glass-btn" style="width: 44px; height: 44px; padding: 0; justify-content: center;"><i class="ph ph-arrow-counter-clockwise"></i></button>
     </div>
 </div>
 
 {% if products|length == 0 %}
-<div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 500px; color: var(--text-secondary);">
-    <i class="ph ph-sparkle" style="font-size: 3rem; margin-bottom: 16px; color: var(--accent-gold);"></i>
-    <h2>Tutto in ordine!</h2>
-    <p>Non ci sono prodotti in fase di validazione al momento.</p>
+<div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 500px; border-style: dashed; border-width: 2px;">
+    <i class="ph-duotone ph-sparkle" style="font-size: 4rem; margin-bottom: 24px; color: var(--accent-gold);"></i>
+    <h2 style="font-weight: 700; color: #fff;">Archivio Certificato</h2>
+    <p style="color: var(--text-secondary);">Tutti i prodotti sono stati validati e sincronizzati con lo store.</p>
 </div>
 {% else %}
 
-<div class="tinder-card-container" id="cards-container">
-    {% for item in products %}
-    <div class="tinder-card {% if loop.index0 == 0 %}front{% elif loop.index0 == 1 %}behind{% else %}hidden{% endif %}" data-id="{{ item.id }}" id="card-{{ loop.index0 }}">
-        
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center;">
-            <div style="font-size: 1.25rem; font-weight: 700;">{{ item.brand }} - {{ item.model }}</div>
-            <div class="badge validating">SKU: {{ item.sku }}</div>
-        </div>
-        
-        <!-- HERO VISUAL CARD -->
-        <div class="images-split">
-            <div class="image-box hero-main">
-                <!-- Simulazione Immagine Originale Drive -->
-                <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#999;">
-                    <i class="ph ph-image" style="font-size: 4rem;"></i>
-                </div>
-                <div class="image-label" style="background:transparent; backdrop-filter:none; color:var(--text-secondary); box-shadow:none;">Source Asset</div>
-            </div>
+<div class="lab-container">
+    <div class="tinder-viewport" id="cards-container">
+        {% for item in products %}
+        {% set imgs = [] %}
+        {% if item.matched_images_json %}
+            {% set imgs = item.matched_images_json|from_json %}
+        {% endif %}
+
+        <div class="tinder-card {% if loop.index0 == 0 %}front{% elif loop.index0 == 1 %}behind{% else %}hidden{% endif %}" data-id="{{ item.id }}" id="card-{{ loop.index0 }}">
             
-            <div class="image-box pip-overlay">
-                <!-- Simulazione Immagine Web Harvester -->
-                <div style="width:100%; height:100%; background: #eaeaea; display:flex; align-items:center; justify-content:center; color:#999;">
-                    <i class="ph ph-globe" style="font-size: 2rem;"></i>
+            <!-- Card Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                <div style="flex: 1;">
+                    <div style="font-size: 0.7rem; font-weight: 800; color: var(--accent-gold); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;">{{ item.brand or 'Articolo Neutro' }}</div>
+                    <div style="font-size: 1.6rem; font-weight: 800; color: #fff; line-height: 1.2;">{{ item.model or 'Modello da Identificare' }}</div>
                 </div>
-                {% if item.image_match_score %}
-                <div style="position: absolute; bottom: -24px; left: 0; width: 100%; text-align: center; font-size: 0.7rem; font-weight: 600; color: {% if item.image_match_score > 80 %}var(--accent-green){% else %}var(--accent-red){% endif %};">
-                    Match {{ item.image_match_score }}%
+                <div style="text-align: right;">
+                    <div style="font-size: 1.4rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">€ {{ item.price or '0' }}</div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-top: 8px;">
+                        {% if not item.price or item.price == 0 %}<span class="audit-flag alert">MISSING_PRICE</span>{% endif %}
+                        {% if not imgs or imgs|length == 0 %}<span class="audit-flag critical">NO_ASSETS</span>{% endif %}
+                    </div>
                 </div>
-                {% endif %}
-                {% if item.discrepancy_flag %}
-                <div style="position: absolute; top: -10px; right: -10px; background: var(--accent-red); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 600;">
-                    Alert
+            </div>
+
+            <!-- Visual & Description Split -->
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; height: 320px; margin-bottom: 24px;">
+                <div class="visual-pane glass-panel" style="padding:0; overflow:hidden; background: #000;">
+                    {% if imgs and imgs|length > 0 %}
+                        <img src="/api/drive/proxy/{{ imgs[0] }}" style="width: 100%; height: 100%; object-fit: contain; opacity: 0.9;">
+                        <div style="position:absolute; top:10px; left:10px; background:var(--accent-gold); color:#000; padding:2px 8px; border-radius:4px; font-size:0.55rem; font-weight:800; letter-spacing:1px;">COVER (FOTO 1)</div>
+                    {% else %}
+                        <div style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; color:#333;">
+                            <i class="ph-duotone ph-image-broken" style="font-size: 4rem;"></i>
+                            <span style="font-size: 0.65rem; font-weight: 800; letter-spacing: 1px;">WAITING FOR ASSETS</span>
+                        </div>
+                    {% endif %}
                 </div>
-                {% endif %}
+                
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div class="glass-panel" style="flex: 1; padding: 16px; font-size: 0.8rem; line-height: 1.6; overflow-y: auto; background: rgba(0,0,0,0.2);">
+                        <div style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <i class="ph-duotone ph-sparkle"></i> AI GENERATED NARRATIVE
+                        </div>
+                        <div style="color: rgba(255,255,255,0.8);">{{ item.ai_description_it or 'Generazione in corso...' }}</div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px; height: 80px;">
+                        {% for g_id in imgs[1:4] %}
+                        <div class="glass-panel" style="flex: 1; padding: 0; overflow: hidden; position:relative;">
+                            <img src="/api/drive/proxy/{{ g_id }}" style="width: 100%; height: 100%; object-fit: cover;">
+                            <div style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.5rem; padding:1px 4px; border-radius:2px;">{{ loop.index + 1 }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
-        </div>
 
-        <!-- METADATA BOXES -->
-        <div class="metadata-grid" style="margin-bottom: 24px;">
-            <div class="input-group">
-                <label>Categoria</label>
-                <input type="text" class="glass-input" id="cat-{{ item.id }}" value="{{ item.category or '' }}">
+            <!-- Editor Section: Technical Data -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
+                <div class="input-group">
+                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Tipo Prodotto</label>
+                    <input type="text" class="glass-input" id="type-{{ item.id }}" value="{{ item.category or '' }}" placeholder="es. Scarpe, Borsa" style="width: 100%; font-size: 0.8rem;">
+                </div>
+                <div class="input-group">
+                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Materiale</label>
+                    <input type="text" class="glass-input" id="mat-{{ item.id }}" value="{{ item.material or '' }}" style="width: 100%; font-size: 0.8rem;">
+                </div>
+                <div class="input-group">
+                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Colore</label>
+                    <input type="text" class="glass-input" id="col-{{ item.id }}" value="{{ item.color or '' }}" style="width: 100%; font-size: 0.8rem;">
+                </div>
+                <div class="input-group">
+                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Dimensioni</label>
+                    <input type="text" class="glass-input" id="dim-{{ item.id }}" value="{{ item.dimensions or '' }}" style="width: 100%; font-size: 0.8rem;">
+                </div>
             </div>
-            <div class="input-group">
-                <label>Materiale</label>
-                <input type="text" class="glass-input" id="mat-{{ item.id }}" value="{{ item.material or '' }}">
-            </div>
-            <div class="input-group">
-                <label>Hardware</label>
-                <input type="text" class="glass-input" id="hw-{{ item.id }}" value="{{ item.hardware_type or '' }}">
-            </div>
-            <div class="input-group">
-                <label>Colore</label>
-                <input type="text" class="glass-input" id="col-{{ item.id }}" value="{{ item.color or '' }}">
-            </div>
-            <div class="input-group">
-                <label>Condizioni</label>
-                <input type="text" class="glass-input" id="cond-{{ item.id }}" value="{{ item.condition_grade or '' }}">
-            </div>
-            <div class="input-group">
-                <label>Prezzo Consigliato (€)</label>
-                <input type="number" class="glass-input" id="price-{{ item.id }}" value="{{ item.price or '' }}">
-            </div>
-            <div class="input-group" style="grid-column: span 3;">
-                <label>Tags (separati da virgola)</label>
-                <input type="text" class="glass-input" id="tags-{{ item.id }}" value="{{ item.tags or '' }}" placeholder="vintage, logo, etc.">
-            </div>
-        </div>
 
-        <!-- SMART ACTIONS -->
-        <div class="tinder-actions">
-            <button class="action-btn reject" onclick="handleSwipe('left', {{ loop.index0 }}, {{ item.id }})" title="Rifiuta (Freccia Sinistra)">
-                <i class="ph ph-x"></i>
-            </button>
-            <button class="action-btn skip" onclick="handleSwipe('bottom', {{ loop.index0 }}, {{ item.id }})" title="Skip (Freccia Giù)">
-                <i class="ph ph-arrow-u-down-right"></i>
-            </button>
-            <button class="action-btn approve" onclick="handleSwipe('right', {{ loop.index0 }}, {{ item.id }})" title="Approva (Freccia Destra)">
-                <i class="ph ph-check"></i>
-            </button>
-        </div>
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 24px;">
+                <div class="input-group">
+                    <label style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase; margin-bottom: 6px; display: block;">Titolo SEO Certificato</label>
+                    <input type="text" class="glass-input" id="seo-{{ item.id }}" value="{{ item.seo_title or '' }}" style="width: 100%; font-size: 1.1rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.03); border-left: 4px solid var(--accent-gold);">
+                </div>
+                <div class="input-group">
+                    <label style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; display: block;">Smart Tags</label>
+                    <input type="text" class="glass-input" id="tags-{{ item.id }}" value="{{ item.tags or '' }}" placeholder="tag1, tag2..." style="width: 100%; background: rgba(255,255,255,0.03);">
+                </div>
+            </div>
 
+            <!-- AI Re-Boost -->
+            <div class="glass-panel" style="padding: 12px; background: rgba(212,175,55,0.03); border: 1px dashed rgba(212,175,55,0.2); display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">AI Engine Re-Boost</label>
+                    <select id="model-{{ item.id }}" class="glass-input" style="width: 100%; font-size: 0.75rem; background: rgba(0,0,0,0.2);">
+                        <option value="llama3">Llama 3 (Meta Local)</option>
+                        <option value="openai">GPT-4o (OpenAI Cloud)</option>
+                    </select>
+                </div>
+                <button onclick="regenerateAI({{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
+                    <i class="ph-duotone ph-magic-wand"></i>
+                </button>
+                <button onclick="deepResearch({{ item.id }})" id="btn-res-{{ item.id }}" class="btn attr-primary" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Web Intelligence Research">
+                    <i class="ph-bold ph-globe-hemisphere-west"></i>
+                </button>
+            </div>
+
+            <!-- Lab Controls -->
+            <div style="display: flex; justify-content: center; gap: 48px; margin-top: auto;">
+                <button class="control-btn reject" onclick="handleSwipe('left', {{ loop.index0 }}, {{ item.id }})" title="Rifiuta (Back to Draft)">
+                    <i class="ph ph-arrow-left"></i>
+                </button>
+                <button class="control-btn skip" onclick="handleSwipe('bottom', {{ loop.index0 }}, {{ item.id }})" title="Skip">
+                    <i class="ph ph-dots-three-circle"></i>
+                </button>
+                <button class="control-btn certify" onclick="handleSwipe('right', {{ loop.index0 }}, {{ item.id }})" title="CERTIFICA E PUBBLICA">
+                    <i class="ph ph-seal-check"></i>
+                </button>
+            </div>
+
+        </div>
+        {% endfor %}
     </div>
-    {% endfor %}
 </div>
+
+<style>
+.lab-container { position: relative; height: 800px; display: flex; justify-content: center; }
+.tinder-viewport { position: relative; width: 100%; max-width: 820px; height: 100%; }
+
+.tinder-card {
+    position: absolute; width: 100%; height: 100%; padding: 32px; border-radius: 24px; 
+    background: #111; /* Sostituzione glassmorphism con solid per performance */
+    border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; overflow: hidden;
+    transition: none; /* Rimozione transizioni pesanti */
+    user-select: none;
+}
+
+.tinder-card.front { z-index: 10; opacity: 1; transform: none; }
+.tinder-card.behind { z-index: 5; opacity: 0.8; transform: scale(0.96) translateY(30px); }
+.tinder-card.hidden { display: none; } /* Non carichiamo elementi invisibili nel rendering costoso */
+
+.card-out-right { transform: translateX(1200px) rotate(25deg) !important; opacity: 0 !important; }
+.card-out-left { transform: translateX(-1200px) rotate(-25deg) !important; opacity: 0 !important; }
+.card-out-bottom { transform: translateY(1200px) !important; opacity: 0 !important; }
+
+.control-btn { 
+    width: 72px; height: 72px; border-radius: 50%; border: none; font-size: 2rem; 
+    display: flex; align-items: center; justify-content: center; cursor: pointer; 
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.control-btn.certify { background: var(--accent-gold); color: #000; box-shadow: 0 0 20px rgba(212,175,55,0.4); }
+.control-btn.certify:hover { transform: scale(1.15) rotate(5deg); box-shadow: 0 0 30px rgba(212,175,55,0.6); }
+.control-btn.reject { background: #222; color: #fff; border: 1px solid #333; }
+.control-btn.reject:hover { transform: scale(1.1) rotate(-5deg); background: #333; }
+.control-btn.skip { background: rgba(255,255,255,0.05); color: #888; }
+.control-btn.skip:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+.audit-flag { font-size: 0.55rem; font-weight: 900; padding: 2px 8px; border-radius: 4px; letter-spacing: 1px; }
+.audit-flag.alert { background: #FFF7ED; color: #C2410C; }
+.audit-flag.critical { background: #FEF2F2; color: #B91C1C; }
+
+.pulse-dot { width: 8px; height: 8px; background: var(--accent-gold); border-radius: 50%; box-shadow: 0 0 10px var(--accent-gold); animation: pulse 2s infinite; }
+@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+</style>
 
 <script>
     let currentIndex = 0;
     const totalCards = {{ products|length }};
     
+    function applyLabFilters() {
+        const cat = document.getElementById('filter-cat').value;
+        const brand = document.getElementById('filter-brand').value;
+        window.location.href = `/atelier-lab?category=${cat}&brand=${brand}`;
+    }
+
     function handleSwipe(direction, index, productId) {
         if(index !== currentIndex) return;
-        
         const card = document.getElementById(`card-${index}`);
         
-        // 1. Applica classe CSS per animazione
-        if(direction === 'right') card.classList.add('card-out-right');
-        else if(direction === 'left') card.classList.add('card-out-left');
-        else if(direction === 'bottom') card.classList.add('card-out-bottom');
-
-        // 2. Raccogli dati form se approved
-        let dataToSave = {};
         if(direction === 'right') {
-            dataToSave = {
-                category: document.getElementById(`cat-${productId}`).value,
-                tags: document.getElementById(`tags-${productId}`).value,
-                material: document.getElementById(`mat-${productId}`).value,
-                hardware_type: document.getElementById(`hw-${productId}`).value,
-                color: document.getElementById(`col-${productId}`).value,
-                condition_grade: document.getElementById(`cond-${productId}`).value,
-                price: document.getElementById(`price-${productId}`).value
-            };
-            // Mock simulato: le immagini passano alla cartella READY
-            console.log("System Log: Immagini spostate in /Ready_Images/ per SKU: " + productId);
+            card.style.transform = 'translateX(1000px)';
+            card.style.opacity = '0';
+        }
+        else if(direction === 'left') {
+            card.style.transform = 'translateX(-1000px)';
+            card.style.opacity = '0';
+        }
+        else if(direction === 'bottom') {
+            card.style.transform = 'translateY(1000px)';
+            card.style.opacity = '0';
         }
 
-        // 3. Esegui la API Call al backend
-        fetch(`/api/lab/action/${productId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: direction, data: dataToSave })
-        }).then(() => {
-            // Aggiorna counter queue
-            document.getElementById('queue-count').innerText = totalCards - currentIndex - 1;
-        });
+        if(direction === 'right') {
+            const payload = {
+                seo_title: document.getElementById(`seo-${productId}`).value,
+                tags: document.getElementById(`tags-${productId}`).value,
+                category: document.getElementById(`type-${productId}`).value,
+                material: document.getElementById(`mat-${productId}`).value,
+                color: document.getElementById(`col-${productId}`).value,
+                dimensions: document.getElementById(`dim-${productId}`).value
+            };
+            fetch(`/api/lab/certify/${productId}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).then(() => showToast("✨ Prodotto Certificato!"));
+        }
 
-        // 4. Prepara la prossima card
-        setTimeout(() => {
-            card.style.display = 'none';
-        }, 400);
-
-        currentIndex++;
+        setTimeout(() => { card.style.display = 'none'; }, 500);
         
+        currentIndex++;
+        updateQueueUI();
+    }
+
+    function updateQueueUI() {
+        const countEl = document.getElementById('queue-count');
+        if(countEl) countEl.innerText = Math.max(0, totalCards - currentIndex);
+
         if (currentIndex < totalCards) {
             const nextCard = document.getElementById(`card-${currentIndex}`);
-            nextCard.classList.remove('behind');
-            nextCard.classList.add('front');
-            
-            // Porta avanti la successiva
-            if (currentIndex + 1 < totalCards) {
-                const afterNext = document.getElementById(`card-${currentIndex+1}`);
-                afterNext.classList.remove('hidden');
-                afterNext.classList.add('behind');
+            if(nextCard) {
+                nextCard.className = 'tinder-card front';
+                nextCard.style.display = 'flex';
             }
+            const afterNext = document.getElementById(`card-${currentIndex+1}`);
+            if(afterNext) {
+                afterNext.className = 'tinder-card behind';
+                afterNext.style.display = 'flex';
+            }
+            // Nascondiamo gli altri per sicurezza
+            document.querySelectorAll('.tinder-card').forEach((c, idx) => {
+                if(idx !== currentIndex && idx !== currentIndex + 1) {
+                    c.style.display = 'none';
+                }
+            });
         } else {
-            // Reload o show "Finito"
-            setTimeout(() => {
-                window.location.reload();
-            }, 600);
+            setTimeout(() => { window.location.reload(); }, 300);
         }
     }
 
-    // Keyboard Shortcuts
-    document.addEventListener('keydown', function(event) {
-        if(currentIndex >= totalCards) return;
-        
-        // Evita trigger se siamo denro una textarea/input
-        const tag = event.target.tagName.toLowerCase();
-        if(tag === 'input' || tag === 'textarea') return;
+    async function deepResearch(pid) {
+        const btn = document.getElementById(`btn-res-${pid}`);
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btn.disabled = true;
+        showToast("🔍 Ricerca web profonda in corso...");
 
-        const currentId = document.getElementById(`card-${currentIndex}`).getAttribute('data-id');
-
-        if (event.code === 'ArrowRight') {
-            handleSwipe('right', currentIndex, currentId);
-        } else if (event.code === 'ArrowLeft') {
-            handleSwipe('left', currentIndex, currentId);
-        } else if (event.code === 'ArrowDown') {
-            handleSwipe('bottom', currentIndex, currentId);
+        try {
+            const res = await fetch(`/api/lab/research/${pid}`, { method: 'POST' });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                document.getElementById(`mat-${pid}`).value = data.data.material || '';
+                document.getElementById(`dim-${pid}`).value = data.data.dimensions || '';
+                // Aggiorniamo anche la descrizione visivamente
+                const descBox = document.querySelector(`#card-${currentIndex} .glass-panel div[style*="rgba(255,255,255,0.8)"]`);
+                if(descBox) descBox.innerText = data.data.ai_description_it;
+                
+                showToast("✨ Intelligence Hub: Dati arricchiti con successo.");
+            } else {
+                showToast("⚠️ Ricerca non ha prodotto nuovi dati deterministici.");
+            }
+        } catch(e) { showToast("Errore di connessione Intelligence."); }
+        finally {
+            btn.innerHTML = '<i class="ph-bold ph-globe-hemisphere-west"></i>';
+            btn.disabled = false;
         }
+    }
+
+    async function regenerateAI(pid) {
+        const btn = document.getElementById(`btn-reg-${pid}`);
+        const model = document.getElementById(`model-${pid}`).value;
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(`/api/lab/regenerate/${pid}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ model: model })
+            });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                document.getElementById(`seo-${pid}`).value = data.seo_title;
+                showToast("🤖 Re-Boost completato.");
+            }
+        } catch(e) { showToast("Errore AI Re-Boost."); }
+        finally {
+            btn.innerHTML = '<i class="ph-duotone ph-magic-wand"></i>';
+            btn.disabled = false;
+        }
+    }
+
+    // Global Search Integration for Lab
+    const searchInput = document.getElementById('global-search');
+    if(searchInput) {
+        searchInput.addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            let visibleCount = 0;
+            
+            document.querySelectorAll('.tinder-card').forEach((card, idx) => {
+                const text = card.innerText.toLowerCase();
+                const matched = text.includes(term);
+                card.classList.toggle('search-filtered', !matched);
+                if(matched && idx >= currentIndex) visibleCount++;
+            });
+            
+            // Se la carta attuale è ora filtrata, prova a passare alla prossima visibile
+            const currentCard = document.getElementById(`card-${currentIndex}`);
+            if(currentCard && currentCard.classList.contains('search-filtered')) {
+                // Cerchiamo la prima carta non filtrata >= currentIndex
+                let nextMatch = -1;
+                for(let i = currentIndex; i < totalCards; i++) {
+                    const c = document.getElementById(`card-${i}`);
+                    if(c && !c.classList.contains('search-filtered')) {
+                        nextMatch = i;
+                        break;
+                    }
+                }
+                if(nextMatch !== -1) {
+                    currentIndex = nextMatch;
+                    updateQueueUI();
+                }
+            }
+            
+            const countEl = document.getElementById('queue-count');
+            if(countEl) countEl.innerText = visibleCount;
+        });
+    }
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+        if(e.target.tagName === 'INPUT') return;
+        const currentCard = document.getElementById(`card-${currentIndex}`);
+        if(!currentCard || currentCard.classList.contains('search-filtered')) return;
+        const pid = currentCard.getAttribute('data-id');
+
+        if(e.code === 'ArrowRight') handleSwipe('right', currentIndex, pid);
+        if(e.code === 'ArrowLeft') handleSwipe('left', currentIndex, pid);
+        if(e.code === 'ArrowDown') handleSwipe('bottom', currentIndex, pid);
     });
-
 </script>
-{% endif %}
 
+<style>
+    .search-filtered { display: none !important; }
+</style>
+{% endif %}
 {% endblock %}

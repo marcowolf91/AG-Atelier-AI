@@ -1,118 +1,544 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="page-title">Engine Room & Passport</h1>
-<p style="color: var(--text-secondary); margin-bottom: 2rem;">Configura le connessioni API e i provider esterni necessari al funzionamento del workflow AI.</p>
+<div class="page-title">Engine Room & Passport <span style="font-size:1.2rem; color:var(--text-secondary);">(Core Infrastructure)</span></div>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+<div style="display: flex; flex-direction: column; gap: 32px; margin-top: 32px;">
     
-    <!-- Modulo Google OAuth -->
-    <div class="glass-panel" style="padding: 24px;">
-        <h2 style="font-size: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
-            <i class="ph ph-google-logo" style="margin-right: 8px;"></i>Connessione Google Workspace
-        </h2>
-        
-        {% if error_msg == "secrets_missing" %}
-        <div style="background: var(--accent-red); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
-            File <b>client_secrets.json</b> non trovato. Scaricalo dalla Cloud Console e inseriscilo nella cartella root.
-        </div>
-        {% elif error_msg == "auth_failed" %}
-        <div style="background: var(--accent-red); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
-            Errore di autenticazione API. Controlla il log o riprova.<br>
-            <span style="font-size: 0.8rem; opacity: 0.8;">[Dettaglio: {{ request.query_params.get('detail', 'Nessun dettaglio') }}]</span>
-        </div>
-        {% endif %}
-        
-        <div style="background: #FAFAFA; border: 1px solid rgba(182,141,64,0.3); border-left: 3px solid var(--accent-gold); padding: 16px; border-radius: 8px; margin-bottom: 24px; font-size: 0.85rem; color: var(--text-secondary);">
-            <strong style="color: var(--text-primary); display: block; margin-bottom: 8px;"><i class="ph ph-warning-circle" style="color: var(--accent-gold);"></i> Rilevi errore "Access Blocked (redirect_uri_mismatch)"?</strong>
-            Per motivi di sicurezza, Google non ti farà accedere se non registri l'indirizzo esatto dell'applicazione.<br><br>
-            Nella Google Cloud Console vai in <strong>Credenziali</strong> > <strong>ID client Web</strong>, scendi a <em>"URI di reindirizzamento autorizzati"</em> e clicca "+ AGGIUNGI URI". Poi incolla questo indirizzo esatto:
-            <div style="background: #FFF; padding: 8px 12px; border: 1px solid var(--glass-border); border-radius: 4px; font-family: monospace; color: var(--text-primary); margin-top: 8px; user-select: all; font-size: 0.9rem;">
-                <script>document.write(window.location.protocol + "//" + window.location.host + "/auth/google/callback");</script>
+    <!-- GOOGLE WORKSPACE CONNECTION -->
+    <div class="glass-panel" style="padding: 32px; border-left: 4px solid #4285F4;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+            <div>
+                <h2 style="font-size: 1.3rem; font-weight: 800; color: #fff; margin-bottom: 8px;">
+                    <i class="ph-duotone ph-google-logo" style="color:#4285F4;"></i> Connessione Google Workspace
+                </h2>
+                <p style="color: var(--text-secondary); font-size: 0.9rem;">Sincronizzazione Cloud per Asset Drive e Master Database Sheets.</p>
             </div>
-            <p style="margin-top: 8px; font-size: 0.8rem;">Salva il pannello Google e riprova a connetterti qui sotto.</p>
+            <div class="glass-panel" style="padding: 10px 20px; display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.2);">
+                <div class="status-led {% if google_connected %}green{% else %}red{% endif %}"></div>
+                <span style="font-weight: 700; font-size: 0.8rem; color: #fff;">{% if google_connected %}SESSIONE ATTIVA{% else %}SCOLLEGATO{% endif %}</span>
+            </div>
         </div>
-        
-        {% if success_msg == "google_connected" %}
-        <div style="background: var(--accent-green); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;">
-            Account Google connesso correttamente al Workspace.
+
+        {% if error_msg == "secrets_missing" %}
+        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #fff; padding: 16px; border-radius: 12px; margin-bottom: 24px; font-size: 0.85rem;">
+            <i class="ph ph-warning"></i> <b>client_secrets.json</b> non rilevato nella root del progetto.
         </div>
         {% endif %}
 
-        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-            Il sistema richiede l'accesso a Google Sheets (lettura/scrittura) e Google Drive (gestione file/rinomina) per il core data sync.
-        </p>
-        
-        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.05);">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div class="status-led {% if google_connected %}green{% else %}red{% endif %}"></div>
-                <span>Stato Token Google: <strong>{% if google_connected %}CONNESSO{% else %}SCOLLEGATO{% endif %}</strong></span>
+        <div class="glass-panel" style="background: rgba(0,0,0,0.1); padding: 24px; border: 1px dashed rgba(255,255,255,0.1); margin-bottom: 24px;">
+            {% if not google_connected %}
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px;">
+                <p style="margin-bottom: 12px;"><i class="ph ph-info"></i> Se visualizzi "redirect_uri_mismatch", registra questo URI nella Google Console:</p>
+                <div style="background: #000; padding: 12px; border-radius: 8px; font-family: monospace; color: var(--accent-gold); font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.05);">
+                    <script>document.write(window.location.protocol + "//" + window.location.host + "/auth/google/callback");</script>
+                </div>
             </div>
-            {% if google_connected %}
-                <span class="badge ready" style="padding: 10px 20px;"><i class="ph ph-check"></i> Sicuro</span>
-            {% else %}
-                <button onclick="window.open('/auth/google/login', 'GoogleAuth', 'width=500,height=600');" class="btn glass-btn attr-primary" style="text-decoration: none;">Connetti Account</button>
             {% endif %}
+
+            <div style="display: flex; gap: 16px;">
+                {% if google_connected %}
+                    <button onclick="window.location.href='/auth/google/login'" class="btn glass-btn" style="flex: 1;"><i class="ph ph-arrows-clockwise"></i> Rinnova Token</button>
+                    <button class="btn glass-btn" style="color:#ef4444;"><i class="ph ph-power"></i> Scollega</button>
+                {% else %}
+                    <button onclick="window.open('/auth/google/login', 'GoogleAuth', 'width=600,height=700');" class="btn attr-primary" style="flex: 1; height: 50px; font-weight: 800;"><i class="ph ph-google-logo"></i> AUTORIZZA PASSPORT GOOGLE</button>
+                {% endif %}
+            </div>
         </div>
     </div>
 
-    <!-- Modulo API Keys -->
-    <div class="glass-panel" style="padding: 24px;">
-        <h2 style="font-size: 1.2rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
-            <i class="ph ph-key" style="margin-right: 8px;"></i>Smart Auth Vault
-        </h2>
+    <!-- SYSTEM STATUS DASHBOARD -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="font-size: 0.8rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 2px; margin: 0;">System Health Monitoring</h3>
+        <button class="btn glass-btn" onclick="refreshSystemHealth()" style="font-size: 0.7rem; padding: 4px 12px; border-radius: 20px;">
+            <i class="ph ph-arrows-clockwise" id="refresh-icon"></i> Aggiorna Stato
+        </button>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+        <div class="glass-panel status-card" id="status-db">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="status-label">Database</span>
+                <div class="status-led {% if health.db.ok %}green{% else %}red{% endif %}" id="led-db"></div>
+            </div>
+            <div class="status-value" id="val-db">{{ health.db.val }}</div>
+        </div>
+        <div class="glass-panel status-card" id="status-drive">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="status-label">Cloud Drive</span>
+                <div class="status-led {% if health.drive.ok %}green{% else %}red{% endif %}" id="led-drive"></div>
+            </div>
+            <div class="status-value" id="val-drive">{{ health.drive.val }}</div>
+        </div>
+        <div class="glass-panel status-card" id="status-ai">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="status-label">AI Engines</span>
+                <div class="status-led {% if health.ai.ok %}green{% else %}red{% endif %}" id="led-ai"></div>
+            </div>
+            <div class="status-value" id="val-ai">{{ health.ai.val }}</div>
+        </div>
+        <div class="glass-panel status-card" id="status-infra">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="status-label">Infra</span>
+                <div class="status-led green"></div>
+            </div>
+            <div class="status-value">Python 3.10+</div>
+        </div>
+    </div>
+
+    <!-- SHOPIFY API CONNECTION -->
+    <!-- SHOPIFY API CONNECTION -->
+    <div class="glass-panel" style="padding: 32px; border-left: 4px solid #10b981; margin-bottom: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+            <div>
+                <h2 style="font-size: 1.3rem; font-weight: 800; color: #fff; margin-bottom: 8px;">
+                    <i class="ph-duotone ph-shopping-bag" style="color:#10b981;"></i> Gateway Shopify Storefront
+                </h2>
+                <p id="shopify-subtext" style="color: var(--text-secondary); font-size: 0.9rem;">Connessione Admin API per sincronizzazione catalogo e ordini.</p>
+            </div>
+            <div id="shopify-status-badge" class="glass-panel" style="padding: 10px 20px; display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.2);">
+                <div class="status-led {% if health.shopify.ok %}green{% else %}red{% endif %}" id="shopify-led"></div>
+                <span id="shopify-status-text" style="font-weight: 700; font-size: 0.8rem; color: #fff;">{% if health.shopify.ok %}ATTIVO{% else %}SCOLLEGATO{% endif %}</span>
+            </div>
+        </div>
         
-        <form method="POST" action="/api/settings/keys" style="display: flex; flex-direction: column; gap: 16px;">
-            
-            <div class="input-group">
-                <label>OpenAI API Key</label>
-                <div style="display: flex; gap: 8px;">
-                    <div class="status-led {% if auth_status.openai %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
-                    <input type="password" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}">
-                </div>
+        <div id="shopify-connected-ui" style="display: {% if health.shopify.ok %}flex{% else %}none{% endif %}; align-items: center; gap: 20px; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="width: 50px; height: 50px; background: rgba(16, 185, 129, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #10b981;">
+                <i class="ph ph-check-circle"></i>
             </div>
-            
-            <div class="input-group">
-                <label>Anthropic API Key</label>
-                <div style="display: flex; gap: 8px;">
-                    <div class="status-led {% if auth_status.anthropic %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
-                    <input type="password" name="anthropic" placeholder="sk-ant-..." class="glass-input" value="{{ auth_status.anthropic_val or '' }}">
-                </div>
+            <div style="flex: 1;">
+                <div style="font-weight: 800; color: #fff; font-size: 1rem;" id="shopify-store-name">{{ health.shopify.msg.upper() if health.shopify.ok else 'STORE NON CONNESSO' }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">Sincronizzazione catalogo pronta per la pubblicazione.</div>
             </div>
-
-            <div class="input-group">
-                <label>Google Gemini API Key</label>
-                <div style="display: flex; gap: 8px;">
-                    <div class="status-led {% if auth_status.gemini %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
-                    <input type="password" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}">
-                </div>
-            </div>
-            
-            <div class="input-group">
-                <label>Serper.dev Key</label>
-                <div style="display: flex; gap: 8px;">
-                    <div class="status-led {% if auth_status.serper %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
-                    <input type="password" name="serper" placeholder="Token per ricerca web" class="glass-input" value="{{ auth_status.serper_val or '' }}">
-                </div>
-            </div>
-
-            <div class="input-group">
-                <label>Shopify Admin Token & URL</label>
-                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                    <div class="status-led {% if auth_status.shopify %}green{% else %}red{% endif %}" style="margin-top: 10px;"></div>
-                    <input type="password" name="shopify_token" placeholder="shpat_..." class="glass-input" value="{{ auth_status.shopify_token_val or '' }}">
-                </div>
-                <div style="display: flex; gap: 8px; margin-left: 18px;">
-                    <input type="text" name="shopify_url" placeholder="iltuostore.myshopify.com" class="glass-input" value="{{ auth_status.shopify_url_val or '' }}">
-                </div>
-            </div>
-            
-            <button type="submit" class="btn glass-btn" style="align-self: flex-end; margin-top: 8px; color: var(--accent-green);">
-                <i class="ph ph-floppy-disk"></i> Salva Chiavi
-            </button>
+            <button onclick="toggleShopifyConfig()" class="btn glass-btn" style="font-size: 0.8rem;"><i class="ph ph-pencil-simple"></i> Modifica Credenziali</button>
+        </div>
+        
+        <!-- Configuration Form -->
+        <form id="shopify-config-form" onsubmit="saveShopifyConfig(event)" style="display: {% if health.shopify.ok %}none{% else %}grid{% endif %}; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px;">
+            <input type="text" id="shopify-id-input" name="shopify_client_id" placeholder="ID Client" class="glass-input" value="{{ auth_status.shopify_client_id_val or '' }}" style="background: rgba(0,0,0,0.2);">
+            <input type="password" id="shopify-secret-input" name="shopify_client_secret" placeholder="Segreto Client" class="glass-input" value="{{ auth_status.shopify_client_secret_val or '' }}" style="background: rgba(0,0,0,0.2);">
+            <input type="text" id="shopify-url-input" name="shopify_url" placeholder="your-store.myshopify.com" class="glass-input" value="{{ auth_status.shopify_url_val or '' }}" style="background: rgba(0,0,0,0.2);">
+            <button type="submit" id="btn-save-shopify" class="btn attr-primary" style="padding: 0 24px;"><i class="ph ph-plug"></i> Collega Store</button>
         </form>
     </div>
 
+    <!-- WORKSPACE ORCHESTRATION -->
+    {% if google_connected %}
+    <div class="page-section-header"><i class="ph-duotone ph-tree-structure"></i> Orchestrazione Data Sync & Cloud Storage</div>
+    
+    <div class="glass-panel" style="padding: 40px;">
+        <div style="display: flex; flex-direction: column; gap: 32px;">
+            
+            <!-- Source Images -->
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 32px; align-items: start;">
+                <div>
+                    <h3 style="font-size: 1.1rem; color: #fff; margin: 0;"><i class="ph-duotone ph-images" style="color:var(--accent-gold);"></i> Root Immagini Originali</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 8px;">Punto di ingresso della pipeline per gli scatti grezzi.</p>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="glass-input" id="drive-folder-id" placeholder="Folder ID..." style="flex: 1; background: rgba(0,0,0,0.2);">
+                        <button class="btn glass-btn" onclick="openDriveBrowser('folder')"><i class="ph ph-magnifying-glass"></i> Sfoglia Drive</button>
+                    </div>
+                    <div id="drive-folder-stats" class="glass-panel" style="display: none; padding: 12px; background: rgba(212,175,55,0.05); border-color: rgba(212,175,55,0.1); font-size: 0.8rem;"></div>
+                </div>
+            </div>
+
+            <!-- Output Repository -->
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 32px; align-items: start;">
+                <div>
+                    <h3 style="font-size: 1.1rem; color: #fff; margin: 0;"><i class="ph-duotone ph-folder-star" style="color:var(--accent-gold);"></i> Repository Cloud Output</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 8px;">Destinazione finale degli asset rinominati e ottimizzati.</p>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="glass-input" id="drive-folder-out-id" placeholder="Output Folder ID..." style="flex: 1; background: rgba(0,0,0,0.2);">
+                        <button class="btn glass-btn" onclick="openDriveBrowser('folder_out')"><i class="ph ph-magnifying-glass"></i> Sfoglia Drive</button>
+                    </div>
+                    <button class="btn glass-btn" onclick="forceCloneStructure()" style="width: fit-content; font-size: 0.75rem; border-color: var(--accent-gold); color: var(--accent-gold);"><i class="ph ph-tree-structure"></i> Sincronizza Albero Sottocartelle</button>
+                    <div id="drive-folder-out-stats" class="glass-panel" style="display: none; padding: 12px; background: rgba(255,255,255,0.03); font-size: 0.8rem;"></div>
+                </div>
+            </div>
+
+            <!-- Google Sheet DB -->
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 32px; align-items: start;">
+                <div>
+                    <h3 style="font-size: 1.1rem; color: #fff; margin: 0;"><i class="ph-duotone ph-file-xls" style="color:#10b981;"></i> Master Database (Sheets)</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 8px;">Foglio di calcolo cloud per la persistenza dei metadati.</p>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="glass-input" id="drive-sheet-id" placeholder="Google Sheet ID..." style="flex: 1;">
+                        <button class="btn glass-btn" onclick="openDriveBrowser('sheet')"><i class="ph ph-magnifying-glass"></i> Seleziona Foglio</button>
+                    </div>
+                    <div id="drive-sheet-stats" class="glass-panel" style="display: none; padding: 16px; background: rgba(255,255,255,0.06); font-size: 0.85rem; color: #fff; border-color: rgba(212,175,55,0.2);"></div>
+                </div>
+            </div>
+
+            <button class="btn attr-primary" onclick="saveWorkspace()" style="height: 54px; font-weight: 800; letter-spacing: 1px; margin-top: 16px;">
+                <i class="ph ph-floppy-disk"></i> CONFERMA CONFIGURAZIONE WORKSPACE
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- AI PROVIDER KEYS -->
+    <div class="page-section-header"><i class="ph-duotone ph-key"></i> Passport: AI Engine API Keys</div>
+    <div class="glass-panel" style="padding: 32px; display: flex; flex-direction: column; gap: 16px;">
+        <form method="POST" action="/api/settings/keys" class="key-row">
+            <div class="key-brand"><img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg"> <span>OpenAI Service</span></div>
+            <input type="password" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}" style="flex:1;">
+            <button type="submit" class="btn glass-btn">Aggiorna</button>
+        </form>
+        <form method="POST" action="/api/settings/keys" class="key-row">
+            <div class="key-brand"><i class="ph ph-google-logo" style="font-size: 24px;"></i> <span>Google Gemini</span></div>
+            <input type="password" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}" style="flex:1;">
+            <button type="submit" class="btn glass-btn">Aggiorna</button>
+        </form>
+    </div>
 </div>
 
+<!-- MODAL DRIVE BROWSER -->
+<div id="drive-modal" class="modal-overlay" style="display:none; z-index: 10001;">
+    <div class="modal-content glass-panel" style="max-width: 750px; padding: 0; overflow: hidden; border-top: 4px solid var(--accent-gold);">
+        <div style="padding: 24px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02);">
+            <div id="drive-breadcrumbs" style="font-size: 0.9rem; font-weight: 700; color: #fff; display: flex; gap: 8px;"></div>
+            <div style="display: flex; gap: 12px;">
+                <button id="drive-select-current-btn" class="btn attr-primary" style="padding: 6px 16px; font-size: 0.75rem; display: none;" onclick="selectDriveItem(driveBreadcrumbs[driveBreadcrumbs.length - 1].id)">Scegli questa cartella</button>
+                <button onclick="closeDriveBrowser()" class="btn glass-btn" style="width: 32px; height: 32px; padding: 0; justify-content: center; border: none;">&times;</button>
+            </div>
+        </div>
+        <div id="drive-list" style="height: 450px; overflow-y: auto;"></div>
+        <div style="padding: 12px 24px; background: rgba(0,0,0,0.2); border-top: 1px solid var(--glass-border); display: flex; justify-content: flex-end;">
+            <button id="drive-create-btn" class="btn glass-btn" style="font-size: 0.7rem; display: none;" onclick="createNewFolderInModal()"><i class="ph ph-folder-plus"></i> Nuova Sottocartella</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.key-row { display: flex; align-items: center; gap: 16px; background: rgba(255,255,255,0.02); padding: 12px 20px; border-radius: 12px; border: 1px solid var(--glass-border); }
+.key-brand { display: flex; align-items: center; gap: 12px; width: 180px; }
+.key-brand img { width: 24px; height: 24px; }
+.key-brand span { font-weight: 700; font-size: 0.9rem; color: #fff; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; }
+.drive-item { padding: 14px 24px; font-size: 0.9rem; display: flex; align-items: center; gap: 16px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.02); transition: all 0.2s; }
+.drive-item:hover { background: rgba(255,255,255,0.05); transform: translateX(4px); }
+
+.status-card { padding: 20px; border: 1px solid rgba(255,255,255,0.05); }
+.status-label { font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+.status-value { font-size: 1.1rem; font-weight: 800; color: #fff; margin-top: 8px; }
+.status-led { width: 10px; height: 10px; border-radius: 50%; background: #444; }
+.status-led.green { background: #10b981; box-shadow: 0 0 10px #10b981; }
+.status-led.red { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+.status-led.yellow { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+
+.page-section-header { margin: 48px 0 24px; font-weight: 800; font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 2px; display: flex; align-items: center; gap: 12px; }
+</style>
+
+<script>
+let currentDriveTarget = '';
+let driveBreadcrumbs = [];
+
+function openDriveBrowser(type) {
+    currentDriveTarget = type;
+    driveBreadcrumbs = [{ id: 'root', name: 'Cloud Root' }];
+    document.getElementById('drive-modal').style.display = 'flex';
+    fetchDriveItems('root', type);
+}
+
+function closeDriveBrowser() { document.getElementById('drive-modal').style.display = 'none'; }
+
+function fetchDriveItems(parentId, type) {
+    const list = document.getElementById('drive-list');
+    const crumbs = document.getElementById('drive-breadcrumbs');
+    
+    crumbs.innerHTML = driveBreadcrumbs.map((c, i) => 
+        `<span style="cursor:pointer; color:${i === driveBreadcrumbs.length-1 ? 'var(--accent-gold)' : '#fff'};" onclick="navigateToBreadcrumb(${i}, '${type}')">${c.name}</span>`
+    ).join('<span style="opacity:0.3;">/</span>');
+
+    list.innerHTML = '<div style="padding:40px; text-align:center;"><i class="ph ph-circle-notch ph-spin" style="font-size:2rem;"></i></div>';
+    
+    fetch(`/api/drive/list?parent_id=${parentId}&item_type=${type}`)
+    .then(res => res.json())
+    .then(data => {
+        list.innerHTML = '';
+        
+        // Shared with me special item
+        if(parentId === 'root') {
+            const shared = document.createElement('div');
+            shared.className = 'drive-item';
+            shared.style.background = 'rgba(212,175,55,0.05)';
+            shared.innerHTML = '<i class="ph ph-users" style="color:var(--accent-gold);"></i> <span>Condivisi Con Me</span>';
+            shared.onclick = () => { driveBreadcrumbs.push({id:'sharedWithMe', name:'Condivisi'}); fetchDriveItems('sharedWithMe', type); };
+            list.appendChild(shared);
+        }
+
+        data.files.forEach(f => {
+            const item = document.createElement('div');
+            item.className = 'drive-item';
+            const icon = f.mimeType.includes('folder') ? 'ph-folder' : (f.mimeType.includes('spreadsheet') ? 'ph-file-xls' : 'ph-file');
+            const color = f.mimeType.includes('folder') ? 'var(--accent-gold)' : (f.mimeType.includes('spreadsheet') ? '#10b981' : '#fff');
+            
+            item.innerHTML = `<i class="ph ${icon}" style="color:${color};"></i> 
+                             <span style="flex:1;">${f.name}</span>`;
+            
+            if(f.mimeType.includes('folder')) {
+                const btnOk = document.createElement('button');
+                btnOk.className = 'btn glass-btn';
+                btnOk.style.fontSize = '0.65rem';
+                btnOk.style.padding = '4px 10px';
+                btnOk.innerText = 'SCEGLI';
+                btnOk.onclick = (e) => { e.stopPropagation(); selectDriveItem(f.id); };
+                item.appendChild(btnOk);
+                item.onclick = () => { driveBreadcrumbs.push({id: f.id, name: f.name}); fetchDriveItems(f.id, type); };
+            } else if(type === 'sheet' && f.mimeType.includes('spreadsheet')) {
+                const btnOk = document.createElement('button');
+                btnOk.className = 'btn glass-btn';
+                btnOk.style.fontSize = '0.65rem';
+                btnOk.innerText = 'SCEGLI';
+                btnOk.onclick = (e) => { e.stopPropagation(); selectDriveItem(f.id); };
+                item.appendChild(btnOk);
+            }
+            list.appendChild(item);
+        });
+
+        const selectCurrentBtn = document.getElementById('drive-select-current-btn');
+        if(selectCurrentBtn) selectCurrentBtn.style.display = (parentId !== 'root' && parentId !== 'sharedWithMe' && currentDriveTarget.includes('folder')) ? 'block' : 'none';
+        const createBtn = document.getElementById('drive-create-btn');
+        if(createBtn) createBtn.style.display = (parentId !== 'sharedWithMe' && currentDriveTarget === 'folder_out') ? 'block' : 'none';
+    });
+}
+
+function navigateToBreadcrumb(i, type) {
+    driveBreadcrumbs = driveBreadcrumbs.slice(0, i + 1);
+    fetchDriveItems(driveBreadcrumbs[i].id, type);
+}
+
+function selectDriveItem(id) {
+    if(currentDriveTarget === 'folder') {
+        const el = document.getElementById('drive-folder-id'); el.value = id; scanDriveFolder(id);
+    } else if(currentDriveTarget === 'folder_out') {
+        const el = document.getElementById('drive-folder-out-id'); el.value = id; scanDriveFolderOut(id);
+    } else {
+        const el = document.getElementById('drive-sheet-id'); el.value = id; scanGoogleSheet(id);
+    }
+    closeDriveBrowser();
+}
+
+function scanDriveFolder(id) {
+    const box = document.getElementById('drive-folder-stats');
+    box.style.display = 'block'; box.innerHTML = 'Analizzando...';
+    fetch(`/api/drive/stats?folder_id=${id}`).then(r => r.json()).then(d => {
+        box.innerHTML = `<strong>Sorgente: ${d.folder_name}</strong> – ${d.image_count} Asset rilevati.`;
+    });
+}
+
+function scanDriveFolderOut(id) {
+    const box = document.getElementById('drive-folder-out-stats');
+    box.style.display = 'block'; box.innerHTML = 'Analizzando...';
+    fetch(`/api/drive/stats?folder_id=${id}`).then(r => r.json()).then(d => {
+        box.innerHTML = `<strong>Output: ${d.folder_name}</strong> – ${d.image_count} Asset elaborati.`;
+    });
+}
+
+function scanGoogleSheet(id) {
+    const box = document.getElementById('drive-sheet-stats');
+    box.style.display = 'block'; box.innerHTML = 'Analizzando...';
+    fetch(`/api/sheets/stats?sheet_id=${id}`).then(r => r.json()).then(d => {
+        box.innerHTML = `<div style="display:flex; justify-content:space-between;"><strong>DB Master: ${d.sheet_name}</strong> <span>${d.row_count} Righe PIM</span></div>`;
+    });
+}
+
+function saveWorkspace() {
+    const payload = {
+        folder_id: document.getElementById('drive-folder-id').value,
+        folder_out_id: document.getElementById('drive-folder-out-id').value,
+        sheet_id: document.getElementById('drive-sheet-id').value
+    };
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(() => showToast("✨ Workspace Salvato."));
+}
+
+function forceCloneStructure() {
+    const sid = document.getElementById('drive-folder-id').value;
+    const tid = document.getElementById('drive-folder-out-id').value;
+    if(!sid || !tid) return showToast("Specifica sorgente e output.");
+    fetch('/api/drive/clone-structure', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ source_id: sid, target_id: tid })
+    }).then(r => r.json()).then(data => {
+        showToast(`Sync completato: ${data.folders_created} cartelle create.`);
+        scanDriveFolderOut(tid);
+    });
+}
+
+function createNewFolderInModal() {
+    const name = prompt("Nome cartella:");
+    if(!name) return;
+    const pid = driveBreadcrumbs[driveBreadcrumbs.length-1].id;
+    fetch('/api/drive/create-folder', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ parent_id: pid, name: name })
+    }).then(() => fetchDriveItems(pid, currentDriveTarget));
+}
+
+function refreshSystemHealth() {
+    const icon = document.getElementById('refresh-icon');
+    if(icon) icon.classList.add('ph-spin');
+    
+    fetch('/api/system/health')
+    .then(r => r.json())
+    .then(d => {
+        if(icon) icon.classList.remove('ph-spin');
+        const ledDb = document.getElementById('led-db');
+        const valDb = document.getElementById('val-db');
+        ledDb.className = 'status-led ' + (d.database.health === 'UP' ? 'green' : 'red');
+        valDb.innerText = `${d.database.total} Prodotti`;
+
+        const ledDrive = document.getElementById('led-drive');
+        const valDrive = document.getElementById('val-drive');
+        const driveOk = d.google.connected && d.google.input === 'CONFIGURED' && d.google.output === 'CONFIGURED';
+        ledDrive.className = 'status-led ' + (driveOk ? 'green' : (d.google.connected ? 'yellow' : 'red'));
+        valDrive.innerText = d.google.connected ? 'Connesso' : 'Disconnesso';
+
+        const ledAi = document.getElementById('led-ai');
+        const valAi = document.getElementById('val-ai');
+        const aiUp = d.ai.ollama === 'UP' || d.ai.openai === 'UP';
+        ledAi.className = 'status-led ' + (aiUp ? 'green' : 'red');
+        valAi.innerText = d.ai.ollama === 'UP' ? 'Ollama: UP' : (d.ai.openai === 'UP' ? 'OpenAI: UP' : 'Offline');
+    });
+}
+
+// Initial Load
+document.addEventListener("DOMContentLoaded", () => {
+    refreshSystemHealth();
+    // Rimossa l'esecuzione automatica per massimizzare le performance
+    fetch('/api/settings').then(r => r.json()).then(data => {
+        if(data.folder_id) { document.getElementById('drive-folder-id').value = data.folder_id; scanDriveFolder(data.folder_id); }
+        if(data.folder_out_id) { document.getElementById('drive-folder-out-id').value = data.folder_out_id; scanDriveFolderOut(data.folder_out_id); }
+        if(data.sheet_id) { document.getElementById('drive-sheet-id').value = data.sheet_id; scanGoogleSheet(data.sheet_id); }
+    });
+});
+</script>
+<script>
+    async function refreshSystemHealth() {
+        const icon = document.getElementById('refresh-icon');
+        if(icon) icon.classList.add('ph-spin');
+        
+        try {
+            const resp = await fetch('/api/system/health');
+            const data = await resp.json();
+            
+            updateCard('db', data.db.ok, data.db.val);
+            updateCard('drive', data.drive.ok, data.drive.val);
+            updateCard('ai', data.ai.ok, data.ai.val);
+            
+        } catch(e) {
+            console.error("Health Check Error:", e);
+        } finally {
+            if(icon) setTimeout(() => icon.classList.remove('ph-spin'), 600);
+        }
+    }
+
+    function updateCard(id, ok, val) {
+        const led = document.getElementById('led-' + id);
+        const valEl = document.getElementById('val-' + id);
+        if(led) led.className = 'status-led ' + (ok ? 'green' : 'red');
+        if(valEl) valEl.innerText = val;
+    }
+
+    async function checkShopifyStatus() {
+        const led = document.getElementById('shopify-led');
+        const text = document.getElementById('shopify-status-text');
+        const connectedUI = document.getElementById('shopify-connected-ui');
+        const configForm = document.getElementById('shopify-config-form');
+        const storeNameEl = document.getElementById('shopify-store-name');
+        
+        try {
+            const resp = await fetch('/api/shopify/status');
+            const data = await resp.json();
+            
+            if(data.connected) {
+                led.className = 'status-led green';
+                text.innerText = 'ATTIVO';
+                text.style.color = '#4ade80';
+                
+                // Show connected UI, hide form
+                connectedUI.style.display = 'flex';
+                configForm.style.display = 'none';
+                storeNameEl.innerText = data.message.toUpperCase();
+            } else {
+                led.className = 'status-led red';
+                text.innerText = 'SCOLLEGATO';
+                text.style.color = '#ef4444';
+                
+                // Show form, hide connected UI
+                connectedUI.style.display = 'none';
+                configForm.style.display = 'grid';
+            }
+        } catch(e) {
+            led.className = 'status-led red';
+            text.innerText = 'ERRORE CONN.';
+        }
+    }
+
+    async function saveShopifyConfig(e) {
+        if(e) e.preventDefault();
+        const btn = document.getElementById('btn-save-shopify');
+        const clientId = document.getElementById('shopify-id-input').value;
+        const clientSecret = document.getElementById('shopify-secret-input').value;
+        const url = document.getElementById('shopify-url-input').value;
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> COLLEGAMENTO...';
+        
+        try {
+            const formData = new FormData();
+            formData.append('shopify_client_id', clientId);
+            formData.append('shopify_client_secret', clientSecret);
+            formData.append('shopify_url', url);
+            
+            const resp = await fetch('/api/settings/keys', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if(resp.ok) {
+                showToast("Credenziali salvate. Verifica connessione...", "info");
+                await checkShopifyStatus(); // Ricarica lo stato
+            } else {
+                showToast("Errore durante il salvataggio.", "error");
+            }
+        } catch(e) {
+            showToast("Errore di rete.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ph ph-plug"></i> Collega Store';
+        }
+    }
+
+    function toggleShopifyConfig() {
+        const connectedUI = document.getElementById('shopify-connected-ui');
+        const configForm = document.getElementById('shopify-config-form');
+        
+        if(configForm.style.display === 'none') {
+            configForm.style.display = 'grid';
+            connectedUI.style.display = 'none';
+        } else {
+            configForm.style.display = 'none';
+            connectedUI.style.display = 'flex';
+        }
+    }
+
+    // Run on load
+    document.addEventListener('DOMContentLoaded', () => {
+        checkShopifyStatus();
+        refreshSystemHealth();
+    });
+</script>
 {% endblock %}

@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">The Loom <span style="font-size:1.2rem; color:var(--text-secondary);">(Data Inbound)</span></div>
+
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--glass-border);">
+    <div>
+        <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary);">Sincronizzazione Sorgenti</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">Importa le nuove acquisizioni da Google Sheets e Drive.</p>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <button onclick="purgeDatabase()" class="btn glass-btn" style="color: var(--accent-red); border-color: rgba(255,100,100,0.2);">
+            <i class="ph ph-trash"></i> Svuota Cache Locale
+        </button>
+        <button onclick="startSync()" id="btn-sync" class="btn glass-btn attr-primary">
+            <i class="ph ph-arrows-clockwise" id="sync-icon"></i> Sincronizza tutti i dati
+        </button>
+    </div>
+</div>
+
+<div id="sync-progress-container" style="display: none; width: 100%; max-width: 400px; margin-bottom: 32px;">
+    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px;">
+        <span style="font-weight: 600; color: var(--accent-black);">In Sync...</span>
+        <span id="sync-perc">0%</span>
+    </div>
+    <div style="height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; width: 100%;">
+        <div id="sync-bar" style="height: 100%; width: 0%; background: var(--accent-black); transition: width 0.3s ease;"></div>
+    </div>
+</div>
+
+{% if sheet_info and sheet_info.sheets_list %}
+<div class="section-head"><i class="ph ph-files"></i> Schede Rilevate nel File</div>
+<div style="display: flex; gap: 8px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 8px;">
+    {% for sname in sheet_info.sheets_list %}
+    <button onclick="startSync('{{ sname }}')" class="btn glass-btn" style="font-size: 0.75rem; white-space: nowrap; padding: 6px 14px;">
+        <i class="ph ph-file-text"></i> Sync: {{ sname }}
+    </button>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="section-head"><i class="ph ph-funnel"></i> Ricerca e Filtri</div>
+<div class="glass-panel" style="margin-bottom: 24px; padding: 16px; display: flex; gap: 16px; align-items: center;">
+    <div style="flex: 2; position: relative;">
+        <i class="ph ph-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+        <input type="text" id="filter-q" value="{{ filter_q }}" class="glass-input" placeholder="Cerca Modello, Brand..." style="padding-left: 36px; width: 100%;">
+    </div>
+    
+    <div style="flex: 1;">
+        <select id="filter-brand" class="glass-input" style="width: 100%;">
+            <option value="">Tutti i Brand</option>
+            {% for b in brands %}
+            <option value="{{ b }}" {% if filter_brand == b %}selected{% endif %}>{{ b }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div style="flex: 1.5;">
+        <select id="filter-status" class="glass-input" style="width: 100%;">
+            <option value="">Tutti i Prodotti</option>
+            <option value="Draft" {% if filter_status == 'Draft' %}selected{% endif %}>Stato: Draft</option>
+            <option value="no_brand" {% if filter_status == 'no_brand' %}selected{% endif %}>⚠ Senza Brand</option>
+            <option value="no_price" {% if filter_status == 'no_price' %}selected{% endif %}>⚠ Senza Prezzo</option>
+            <option value="no_material" {% if filter_status == 'no_material' %}selected{% endif %}>⚠ Senza Materiale</option>
+            <option value="no_color" {% if filter_status == 'no_color' %}selected{% endif %}>⚠ Senza Colore/HW</option>
+            <option value="no_dims" {% if filter_status == 'no_dims' %}selected{% endif %}>⚠ Senza Misure</option>
+            <option value="no_images" {% if filter_status == 'no_images' %}selected{% endif %}>⚠ Senza Immagini</option>
+            <option value="Error" {% if filter_status == 'Error' %}selected{% endif %}>Stato: Errore</option>
+        </select>
+    </div>
+
+    <button onclick="applyFilters()" class="btn glass-btn attr-primary" style="padding: 10px 20px;"><i class="ph ph-funnel-simple"></i> Filtra</button>
+    <a href="/the-loom" class="btn glass-btn" style="padding: 10px; font-size: 1.2rem;" title="Reset Filtri"><i class="ph ph-arrow-counter-clockwise"></i></a>
+</div>
+
+<!-- Quick Multi-Filters (Pills) -->
+<div style="display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; align-items: center;">
+    <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Mancanze Rapide:</span>
+    {% set missing_types = [
+        ('no_brand', 'Brand', 'ph-tag'),
+        ('no_price', 'Prezzo', 'ph-currency-eur'),
+        ('no_material', 'Materiale', 'ph-specimen'),
+        ('no_color', 'Colore', 'ph-palette'),
+        ('no_dims', 'Misure', 'ph-ruler'),
+        ('no_images', 'Immagini', 'ph-image')
+    ] %}
+    {% for val, label, icon in missing_types %}
+        <div onclick="toggleQuickFilter('{{ val }}')" 
+             class="pill-filter {% if val in filter_status %}active{% endif %}"
+             style="cursor: pointer; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--glass-border); font-size: 0.8rem; display: flex; align-items: center; gap: 6px; transition: all 0.2s ease; background: {% if val in filter_status %}var(--accent-gold){% else %}rgba(255,255,255,0.5){% endif %}; color: {% if val in filter_status %}white{% else %}var(--text-primary){% endif %};">
+            <i class="{{ icon }}"></i> {{ label }}
+        </div>
+    {% endfor %}
+</div>
+
+<script>
+function toggleQuickFilter(val) {
+    const url = new URL(window.location.href);
+    let current = url.searchParams.get("status") || "";
+    let filters = current ? current.split(',') : [];
+    
+    if (filters.includes(val)) {
+        filters = filters.filter(f => f !== val);
+    } else {
+        filters.push(val);
+    }
+    
+    if (filters.length > 0) {
+        url.searchParams.set("status", filters.join(','));
+    } else {
+        url.searchParams.delete("status");
+    }
+    window.location.href = url.toString();
+}
+</script>
+
+<style>
+.pill-filter:hover {
+    border-color: var(--accent-gold);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(182,141,64,0.15);
+}
+.pill-filter.active {
+    background: var(--accent-gold) !important;
+    border-color: var(--accent-gold) !important;
+    color: white !important;
+    font-weight: 600;
+}
+</style>
+
+<div class="section-head" style="display: flex; justify-content: space-between; align-items: center;">
+    <span><i class="ph ph-books"></i> Catalogo Prodotti Importati ({% if products %}{{ products|length }}{% else %}0{% endif %})</span>
+    <div style="display: flex; gap: 12px;">
+         <button class="btn glass-btn" style="font-size: 0.75rem; padding: 4px 10px;"><i class="ph ph-lightning"></i> Azioni Massive</button>
+    </div>
+</div>
+
+<div class="glass-panel" style="overflow-x: auto; padding: 0;">
+    <table class="inventory-table" style="min-width: 1400px; border-collapse: separate; border-spacing: 0;">
+        <thead>
+            <tr style="background: rgba(0,0,0,0.02);">
+                <th style="width: 40px; padding-left: 16px;"><input type="checkbox" id="master-checkbox" onclick="toggleAllCheckboxes(this)"></th>
+                <th>Stato</th>
+                <th>Brand / Articolo</th>
+                <th style="font-size: 0.75rem; opacity: 0.7;">Materiale</th>
+                <th style="font-size: 0.75rem; opacity: 0.7;">Colore / HW</th>
+                <th style="font-size: 0.75rem; opacity: 0.7;">Misure / Luce</th>
+                <th style="font-size: 0.75rem; opacity: 0.7;">Condizioni / Corredo</th>
+                <th style="font-size: 0.75rem; opacity: 0.7;">Sede / Prezzo</th>
+                <th style="text-align: right; padding-right: 16px;">Azione</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td style="padding-left: 16px;"><input type="checkbox" class="product-checkbox" value="{{ p.id }}"></td>
+                <td>
+                    {% set missing = [] %}
+                    {% if not p.brand %}{% set _ = missing.append('Brand') %}{% endif %}
+                    {% if not p.model %}{% set _ = missing.append('Modello') %}{% endif %}
+                    {% if not p.material %}{% set _ = missing.append('Mat') %}{% endif %}
+                    {% if not p.color %}{% set _ = missing.append('Col') %}{% endif %}
+                    {% if not p.condition_grade %}{% set _ = missing.append('Cond') %}{% endif %}
+                    {% if not p.accessories_included %}{% set _ = missing.append('Corr') %}{% endif %}
+                    {% if not p.price or p.price == 0 %}{% set _ = missing.append('€') %}{% endif %}
+                    
+                    {% set completeness = ((7 - missing|length) / 7 * 100)|int %}
+                    
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 36px; height: 6px; background: #eee; border-radius: 3px; overflow: hidden;">
+                                <div style="width: {{ completeness }}%; height: 100%; background: {% if completeness == 100 %}#22C55E{% elif completeness > 50 %}#F59E0B{% else %}#EF4444{% endif %};"></div>
+                            </div>
+                            <span style="font-size: 0.65rem; font-weight: 700; color: var(--text-secondary);">{{ completeness }}%</span>
+                        </div>
+                        {% if missing %}
+                        <div style="font-size: 0.6rem; color: #B91C1C; font-weight: 500; display: flex; flex-wrap: wrap; gap: 4px;">
+                            <i class="ph ph-warning-circle"></i> Manca: {{ missing|join(', ') }}
+                        </div>
+                        {% else %}
+                        <div style="font-size: 0.6rem; color: #15803D; font-weight: 500;">
+                            <i class="ph ph-check-circle"></i> Pronto per il Lab
+                        </div>
+                        {% endif %}
+                        <span class="badge" style="background:rgba(0,0,0,0.03); color:rgba(0,0,0,0.4); font-size: 0.5rem; text-transform: uppercase; width: fit-content; padding: 2px 5px;">{{ p.source_sheet or 'Master' }}</span>
+                    </div>
+                </td>
+                <td>
+                    <div style="font-weight: 600; color: var(--text-primary);">{{ p.brand or '-' }}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">{{ p.model or '-' }}</div>
+                </td>
+                <td style="font-size: 0.75rem;">{{ p.material or '-' }}</td>
+                <td style="font-size: 0.75rem;">
+                    <div>{{ p.color or '-' }}</div>
+                    <div style="opacity: 0.6;">{{ p.hardware_type or '-' }}</div>
+                </td>
+                <td style="font-size: 0.75rem;">
+                    <div>{{ p.dimensions or '-' }}</div>
+                    {% if p.handle_drop %}<div style="opacity: 0.6;">Luce: {{ p.handle_drop }}</div>{% endif %}
+                </td>
+                <td style="font-size: 0.75rem;">
+                    <div>{{ p.condition_grade or '-' }}</div>
+                    <div style="opacity: 0.6;">{{ p.accessories_included or '-' }}</div>
+                </td>
+                <td style="font-size: 0.75rem;">
+                    <div style="font-weight: 700; color: var(--accent-black);">€ {{ p.price or '0' }}</div>
+                    <div style="opacity: 0.6; font-size: 0.7rem;">{{ p.location or '-' }}</div>
+                </td>
+                <td style="text-align: right; padding-right: 16px;">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                        <button onclick="openEditModal({{ p.id }}, '{{ p.brand|escape }}', '{{ p.model|escape }}', '{{ p.sku|escape }}', {{ p.price or 0 }})" class="btn glass-btn" style="padding: 6px; color: var(--accent-black); border:none; background:transparent;"><i class="ph ph-pencil-simple"></i></button>
+                        <button onclick="removeProduct({{ p.id }})" class="btn glass-btn" style="padding: 6px; color: var(--accent-red); border:none; background:transparent;"><i class="ph ph-trash"></i></button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 80px;">
+                    <i class="ph ph-archive-box" style="font-size: 3rem; opacity: 0.1; margin-bottom: 12px;"></i><br>
+                    Catalogo vuoto. Avvia la sincronizzazione dalle schede in alto.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+.section-head { margin-top: 32px; margin-bottom: 16px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+.mapping-tag { background: white; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--glass-border); font-size: 0.75rem; color: var(--text-secondary); }
+.mapping-tag span { font-weight: 700; color: var(--text-primary); }
+.ph-check-circle { color: var(--accent-green); }
+.ph-warning { color: var(--accent-red); }
+</style>
+
+<script>
+<!-- Modal Quick-Edit -->
+<div id="quick-edit-modal" class="glass-panel" style="display:none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1001; width: 500px; padding: 32px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); border: 1px solid var(--accent-gold)30;">
+    <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 20px;"><i class="ph ph-note-pencil" style="color:var(--accent-gold);"></i> Correzione Rapida</h2>
+    
+    <input type="hidden" id="edit-id">
+    <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
+        <div class="input-group">
+            <label style="display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; margin-bottom:4px;">Brand</label>
+            <input type="text" id="edit-brand" class="glass-input" style="width:100%;">
+        </div>
+        <div class="input-group">
+            <label style="display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; margin-bottom:4px;">Modello</label>
+            <input type="text" id="edit-model" class="glass-input" style="width:100%;">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="input-group">
+                <label style="display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; margin-bottom:4px;">SKU</label>
+                <input type="text" id="edit-sku" class="glass-input" style="width:100%;">
+            </div>
+            <div class="input-group">
+                <label style="display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; margin-bottom:4px;">Prezzo (€)</label>
+                <input type="number" id="edit-price" class="glass-input" style="width:100%;">
+            </div>
+        </div>
+    </div>
+    
+    <div style="display: flex; justify-content: flex-end; gap: 12px;">
+        <button onclick="closeEditModal()" class="btn glass-btn">Annulla</button>
+        <button onclick="saveQuickEdit()" class="btn glass-btn attr-primary">Salva Correzione</button>
+    </div>
+</div>
+<div id="quick-edit-overlay" onclick="closeEditModal()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;"></div>
+
+<script>
+    function openEditModal(id, brand, model, sku, price) {
+        document.getElementById('edit-id').value = id;
+        document.getElementById('edit-brand').value = brand;
+        document.getElementById('edit-model').value = model;
+        document.getElementById('edit-sku').value = sku;
+        document.getElementById('edit-price').value = price;
+        
+        document.getElementById('quick-edit-modal').style.display = 'block';
+        document.getElementById('quick-edit-overlay').style.display = 'block';
+    }
+
+    function closeEditModal() {
+        document.getElementById('quick-edit-modal').style.display = 'none';
+        document.getElementById('quick-edit-overlay').style.display = 'none';
+    }
+
+    async function saveQuickEdit() {
+        const id = document.getElementById('edit-id').value;
+        const brand = document.getElementById('edit-brand').value;
+        const model = document.getElementById('edit-model').value;
+        const sku = document.getElementById('edit-sku').value;
+        const price = document.getElementById('edit-price').value;
+        
+        try {
+            const res = await fetch(`/api/product/update/${id}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ brand, model, sku, price })
+            });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                location.reload();
+            } else {
+                alert("Errore: " + data.error);
+            }
+        } catch(e) { alert("Errore di connessione."); }
+    }
+
+    function applyFilters() {
+        const q = document.getElementById('filter-q').value || '';
+        const brand = document.getElementById('filter-brand').value || '';
+        const status = document.getElementById('filter-status').value || '';
+        
+        let url = new URL(window.location.href);
+        url.searchParams.set('q', q);
+        url.searchParams.set('brand', brand);
+        url.searchParams.set('status', status);
+        window.location.href = url.toString();
+    }
+
+    function removeProduct(pid) {
+        if(!confirm("Vuoi rimuovere questo prodotto dalla vista locale?")) return;
+        fetch(`/api/product/${pid}`, { method: 'DELETE' }).then(() => {
+            location.reload();
+        });
+    }
+
+    function startSync(range = "A:Z") {
+        let btn = document.getElementById("btn-sync");
+        let icon = document.getElementById("sync-icon");
+        let container = document.getElementById("sync-progress-container");
+        let bar = document.getElementById("sync-bar");
+        let perc = document.getElementById("sync-perc");
+
+        btn.disabled = true;
+        icon.classList.add("ph-spin");
+        container.style.display = "block";
+        
+        let progress = 0;
+        let pInt = setInterval(() => {
+            progress += 5;
+            if(progress > 90) clearInterval(pInt);
+            bar.style.width = progress + "%";
+            perc.innerText = progress + "%";
+        }, 100);
+
+        fetch("/api/sync", {
+            method: "POST", 
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({range: range})
+        }).then(res => res.json()).then(data => {
+            clearInterval(pInt);
+            bar.style.width = "100%";
+            perc.innerText = "100%";
+            
+            let msg = `Sincronizzazione completata!\n- Nuovi importati: ${data.imported || 0}\n- Esistenti aggiornati: ${data.updated || 0}`;
+            if(data.sheets_processed) msg += `\n- Fogli elaborati: ${data.sheets_processed}`;
+            
+            alert(msg);
+            window.location.reload();
+        });
+    }
+
+    function purgeDatabase() {
+        if(!confirm("Sicuro di voler svuotare la cache locale? Eliminerà tutti i prodotti importati finora per permetterti un sync pulito.")) return;
+        fetch("/api/database/purge", {method: "POST"}).then(() => window.location.reload());
+    }
+
+    function toggleAllCheckboxes(master) {
+        const checkboxes = document.querySelectorAll('.product-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = master.checked;
+        });
+    }
+</script>
+{% endblock %}

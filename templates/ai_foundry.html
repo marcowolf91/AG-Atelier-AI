@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">AI Foundry <span style="font-size:1.2rem; color:var(--text-secondary);">(Deep Engine & Orchestration)</span></div>
+
+<div style="margin-top: 32px; display: grid; grid-template-columns: 300px 1fr; gap: 32px; align-items: start;">
+    
+    <!-- SIDEBAR NAVIGATION -->
+    <div class="glass-panel" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 32px;">
+        <div class="f-nav active" onclick="showSection('paths')">
+            <i class="ph-duotone ph-folder-open"></i>
+            <span>Percorsi & Sorgenti</span>
+        </div>
+        <div class="f-nav" onclick="showSection('catalog')">
+            <i class="ph-duotone ph-cpu"></i>
+            <span>Modelli Generativi</span>
+        </div>
+        <div class="f-nav" onclick="showSection('tasks')">
+            <i class="ph-duotone ph-flow-arrow"></i>
+            <span>Orchestrazione Task</span>
+        </div>
+    </div>
+
+    <!-- MAIN CONTROL AREA -->
+    <div style="display: flex; flex-direction: column; gap: 32px;">
+        
+        <!-- SECTION: PATHS & BROWSER -->
+        <div id="sec-paths" class="f-section glass-panel" style="padding: 32px;">
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(212,175,55,0.05); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(212,175,55,0.1);">
+                    <i class="ph-duotone ph-hard-drive" style="font-size: 1.6rem;"></i>
+                </div>
+                <div>
+                    <h2 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin: 0;">Configurazione File System</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Definisci le root operative per i modelli locali e i dump temporanei.</p>
+                </div>
+            </div>
+            
+            <div class="glass-panel" style="background: rgba(0,0,0,0.2); border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border);">
+                <div style="padding: 16px 24px; background: rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border);">
+                     <div id="current-path-display" style="font-family: monospace; font-size: 0.75rem; color: var(--accent-gold); font-weight: 600;">/Users/marcosimonelli/...</div>
+                     <button onclick="selectCurrentFolder()" class="btn attr-primary" style="padding: 6px 14px; font-size: 0.7rem;">Imposta Root</button>
+                </div>
+                <div id="browser-items" style="height: 380px; overflow-y: auto; padding: 12px;">
+                     <!-- Populate via JS -->
+                     <div style="padding: 40px; text-align: center; color: var(--text-secondary);">
+                        <i class="ph ph-circle-notch ph-spin" style="font-size: 2rem; margin-bottom: 12px;"></i>
+                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION: CATALOG (LLM CARDS) -->
+        <div id="sec-catalog" class="f-section" style="display: none;">
+            <div class="page-section-header" style="margin-top: 0;"><i class="ph-duotone ph-brain"></i> Fusion Grid: Disponibilità Modelli</div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                <!-- Card Llama 3 -->
+                <div class="glass-panel model-glass-card">
+                    <div class="mg-top">
+                        <i class="ph-duotone ph-atom" style="color: var(--accent-gold);"></i>
+                        <span id="st-llama3" class="mg-badge">VERIFICA...</span>
+                    </div>
+                    <h3 class="mg-title">LLaMA 3 (8B)</h3>
+                    <p class="mg-desc">Ottimizzato per narrazioni di lusso e SEO storytelling. Gira localmente sul tuo Mac.</p>
+                    <div class="mg-stats">
+                        <span><i class="ph ph-currency-eur"></i> FLAT RATE</span>
+                        <span><i class="ph ph-shield-check"></i> 100% PRIVATE</span>
+                    </div>
+                    <button class="btn glass-btn full-w" onclick="pullModel('llama3')" id="btn-llama3">Verifica Livello</button>
+                </div>
+
+                <!-- Card Mistral -->
+                <div class="glass-panel model-glass-card">
+                    <div class="mg-top">
+                        <i class="ph-duotone ph-fingerprint" style="color: #4ade80;"></i>
+                        <span id="st-mistral" class="mg-badge">VERIFICA...</span>
+                    </div>
+                    <h3 class="mg-title">Mistral (7B)</h3>
+                    <p class="mg-desc">Ingegnerizzato per precisione tecnica, estrazione di materiali e misure.</p>
+                    <div class="mg-stats">
+                        <span><i class="ph ph-lightning"></i> ALTA VELOCITÀ</span>
+                        <span><i class="ph ph-cpu"></i> OPTIMIZED</span>
+                    </div>
+                    <button class="btn glass-btn full-w" onclick="pullModel('mistral')" id="btn-mistral">Verifica Livello</button>
+                </div>
+
+                <!-- Card Moondream (Vision) -->
+                <div class="glass-panel model-glass-card">
+                    <div class="mg-top">
+                        <i class="ph-duotone ph-eye" style="color: #a855f7;"></i>
+                        <span id="st-moondream" class="mg-badge">VERIFICA...</span>
+                    </div>
+                    <h3 class="mg-title">Moondream (Vision)</h3>
+                    <p class="mg-desc">Il "Cervello Visivo" locale. Analizza foto, riconosce materiali e dettagli estetici.</p>
+                    <div class="mg-stats">
+                        <span><i class="ph ph-camera"></i> MULTIMODAL</span>
+                        <span><i class="ph ph-shield-check"></i> PRIVATE VISION</span>
+                    </div>
+                    <button class="btn glass-btn full-w" onclick="pullModel('moondream')" id="btn-moondream">Verifica Livello</button>
+                </div>
+
+                <!-- Card OpenAI -->
+                <div class="glass-panel model-glass-card cloud">
+                    <div class="mg-top">
+                        <i class="ph-duotone ph-cloud" style="color: #60a5fa;"></i>
+                        <span class="mg-badge cloud">API CLOUD</span>
+                    </div>
+                    <h3 class="mg-title">GPT-4o (OpenAI)</h3>
+                    <p class="mg-desc">Massima capacità di ragionamento cross-modale. Richiede connessione attiva.</p>
+                    <div class="mg-stats">
+                        <span><i class="ph ph-coins"></i> PAY-PER-USE</span>
+                        <span><i class="ph ph-globe"></i> GLOBAL</span>
+                    </div>
+                    <button class="btn glass-btn full-w" onclick="window.location.href='/engine-room'">Configura Chiave</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION: TASKS -->
+        <div id="sec-tasks" class="f-section glass-panel" style="padding: 32px; display: none;">
+            <h2 style="font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 32px; display: flex; align-items: center; gap: 12px;">
+                <i class="ph-duotone ph-gear-six" style="color:var(--accent-gold);"></i> Orchestrazione Task Dinamici
+            </h2>
+            
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="task-row glass-panel">
+                    <div class="tr-info">
+                        <strong>Generazione Narrativa (Muse)</strong>
+                        <span>Storytelling di lusso e schede prodotto emotive.</span>
+                    </div>
+                    <select class="glass-input tr-select" data-task="description">
+                        <option value="llama3">LLaMA 3 (Creativo/Narrativo)</option>
+                        <option value="mistral">Mistral (Tecnico/Preciso)</option>
+                        <option value="openai">GPT-4o (Standard Industry)</option>
+                    </select>
+                </div>
+
+                <div class="task-row glass-panel">
+                    <div class="tr-info">
+                        <strong>Analisi Vision (Harvester)</strong>
+                        <span>Riconoscimento loghi, hardware e materiali dalle foto.</span>
+                    </div>
+                    <select class="glass-input tr-select" data-task="vision">
+                        <option value="moondream">Moondream (Vision Engine Local)</option>
+                        <option value="openai">GPT-4o Vision (Cloud High-Res)</option>
+                    </select>
+                </div>
+
+                <button onclick="saveTaskAssignments()" class="btn attr-primary" style="width: 100%; height: 50px; margin-top: 24px; font-weight: 800; letter-spacing: 1px;">
+                    <i class="ph ph-check-circle"></i> SALVA ARCHITETTURA TASKS
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+.f-nav { padding: 14px 20px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 14px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); transition: all 0.2s ease; }
+.f-nav:hover { background: rgba(255,255,255,0.03); color: #fff; }
+.f-nav.active { background: var(--accent-gold); color: #000; box-shadow: 0 4px 15px rgba(212,175,55,0.2); }
+.f-nav i { font-size: 1.4rem; }
+
+.f-section { animation: slideUp 0.4s cubic-bezier(0, 0.8, 0.2, 1); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+.model-glass-card { padding: 24px; border-radius: 20px; border-top: 1px solid rgba(255,255,255,0.1); }
+.model-glass-card.cloud { border-style: dashed; border-color: rgba(255,255,255,0.1); }
+.mg-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.mg-top i { font-size: 2.2rem; }
+.mg-badge { font-size: 0.6rem; font-weight: 800; padding: 4px 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); color: #888; }
+.mg-badge.ready { background: #22c55e20; color: #4ade80; border-color: #22c55e40; }
+.mg-title { font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 12px; }
+.mg-desc { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px; height: 50px; }
+.mg-stats { display: flex; border-top: 1px solid var(--glass-border); padding-top: 16px; margin-bottom: 20px; gap: 16px; }
+.mg-stats span { font-size: 0.6rem; font-weight: 700; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.full-w { width: 100%; justify-content: center; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; font-size: 0.75rem; }
+
+.browser-item { padding: 12px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; font-size: 0.85rem; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.02); transition: all 0.2s; }
+.browser-item:hover { background: rgba(255,255,255,0.05); transform: translateX(4px); }
+.browser-item i { color: var(--accent-gold); font-size: 1.2rem; }
+
+.task-row { padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.01); transition: all 0.2s; }
+.task-row:hover { background: rgba(255,255,255,0.03); }
+.tr-info { display: flex; flex-direction: column; gap: 4px; }
+.tr-info strong { font-size: 0.95rem; color: #fff; }
+.tr-info span { font-size: 0.75rem; color: var(--text-secondary); }
+.tr-select { width: 280px; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1); }
+
+.page-section-header { margin: 40px 0 20px; font-weight: 800; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 2px; display: flex; align-items: center; gap: 12px; }
+</style>
+
+<script>
+    let currentPath = "";
+
+    document.addEventListener("DOMContentLoaded", () => {
+        browseFolder("");
+        loadTaskAssignments();
+        checkLocalEngine();
+        setInterval(checkLocalEngine, 5000);
+    });
+
+    function showSection(id) {
+        document.querySelectorAll('.f-section').forEach(s => s.style.display = 'none');
+        document.getElementById('sec-' + id).style.display = 'block';
+        document.querySelectorAll('.f-nav').forEach(n => n.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+    }
+
+    async function browseFolder(path = "") {
+        try {
+            const res = await fetch(`/api/files/browse?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+            const container = document.getElementById('browser-items');
+            document.getElementById('current-path-display').innerText = data.current_path;
+            currentPath = data.current_path;
+            container.innerHTML = "";
+            
+            // Pulsante "Torna Su" se non a root
+            if(data.current_path !== "/") {
+                const up = document.createElement('div');
+                up.className = "browser-item";
+                up.innerHTML = `<i class="ph ph-arrow-u-up-left"></i> .. (Directory Superiore)`;
+                up.onclick = () => {
+                    const parts = currentPath.split('/');
+                    parts.pop();
+                    browseFolder(parts.join('/') || '/');
+                };
+                container.appendChild(up);
+            }
+
+            data.items.forEach(item => {
+                if(item.name === '..') return;
+                const div = document.createElement('div');
+                div.className = "browser-item";
+                div.innerHTML = `<i class="ph-duotone ph-folder"></i> ${item.name}`;
+                div.onclick = () => browseFolder(item.path);
+                container.appendChild(div);
+            });
+        } catch(e) { console.error("Browser Error", e); }
+    }
+
+    function selectCurrentFolder() {
+        showToast("📍 Root configurata: " + currentPath);
+    }
+
+    async function checkLocalEngine() {
+        try {
+            const res = await fetch('/api/ollama/status');
+            const data = await res.json();
+            const currentModels = data.models.map(m => m.name.split(':')[0]); 
+            ['llama3', 'mistral', 'moondream'].forEach(mName => {
+                const badge = document.getElementById(`st-${mName}`);
+                const btn = document.getElementById(`btn-${mName}`);
+                if(!badge || !btn) return;
+
+                if(currentModels.includes(mName)) {
+                    badge.innerText = 'INSTALLATO';
+                    badge.classList.add('ready');
+                    if(!btn.getAttribute('data-pulling')) {
+                        btn.innerText = 'Attivo';
+                        btn.disabled = true;
+                        btn.style.opacity = '0.5';
+                    }
+                } else {
+                    badge.innerText = 'NON TROVATO';
+                    badge.classList.remove('ready');
+                    if(!btn.getAttribute('data-pulling')) {
+                        btn.innerText = 'Installa Modello';
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                    }
+                }
+            });
+        } catch(e) {}
+    }
+
+    function pullModel(name) {
+        const btn = document.getElementById(`btn-${name}`);
+        btn.disabled = true;
+        btn.setAttribute('data-pulling', 'true');
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Inizializzazione...';
+
+        const es = new EventSource(`/api/ollama/stream-pull?name=${name}`);
+        es.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            if(d.status === 'downloading' && d.total) {
+                btn.innerHTML = `Installazione: ${Math.round((d.completed/d.total)*100)}%`;
+            } else if(d.status === 'success') {
+                es.close();
+                showToast(`✅ ${name.toUpperCase()} pronto all'uso.`);
+                btn.innerHTML = 'Fatto!';
+                setTimeout(() => { btn.removeAttribute('data-pulling'); checkLocalEngine(); }, 1200);
+            } else if(d.status === 'error') {
+                es.close();
+                showToast("❌ Errore durante l'installazione.");
+                btn.disabled = false;
+                btn.removeAttribute('data-pulling');
+                btn.innerHTML = 'Riprova';
+            }
+        };
+    }
+
+    async function loadTaskAssignments() {
+        try {
+            const res = await fetch('/api/settings/tasks');
+            const data = await res.json();
+            for (let [task, model] of Object.entries(data)) {
+                const select = document.querySelector(`select[data-task="${task}"]`);
+                if(select) select.value = model;
+            }
+        } catch(e) {}
+    }
+
+    async function saveTaskAssignments() {
+        const data = {};
+        document.querySelectorAll('select[data-task]').forEach(s => data[s.getAttribute('data-task')] = s.value);
+        try {
+            await fetch('/api/settings/tasks', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            showToast("✨ Architettura Task salvata.");
+        } catch(e) { showToast("Errore nel salvataggio."); }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Shopify Mirror <span style="font-size:1.2rem; color:var(--text-secondary);">(Live Storefront)</span></div>
+
+<div class="glass-panel" style="margin-bottom: 24px; padding: 20px; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h2 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 4px;">Sincronizzazione Bilaterale</h2>
+        <p style="font-size: 0.85rem; color: var(--text-secondary);">Visualizza i prodotti già presenti online e importa i nuovi acquisiti direttamente su Shopify.</p>
+    </div>
+    <div style="display: flex; gap: 12px;">
+        <button onclick="refreshShopifyCatalog()" id="btn-refresh" class="btn glass-btn attr-primary">
+            <i class="ph ph-arrows-clockwise"></i> Aggiorna Catalogo Online
+        </button>
+    </div>
+</div>
+
+<div id="shopify-catalog-container">
+    <div style="padding: 60px; text-align: center; color: var(--text-secondary);">
+        <i class="ph ph-circle-notch ph-spin" style="font-size: 2rem; margin-bottom: 12px; display: block;"></i>
+        Caricamento catalogo Shopify...
+    </div>
+</div>
+
+<script>
+async function refreshShopifyCatalog() {
+    const btn = document.getElementById('btn-refresh');
+    const container = document.getElementById('shopify-catalog-container');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> Sincronizzazione...';
+    
+    try {
+        const response = await fetch('/api/shopify/catalog');
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            renderCatalog(data.products);
+        } else {
+            container.innerHTML = `<div class="glass-panel" style="color:var(--accent-red); padding:20px; text-align:center;">Errore: ${data.error || 'Impossibile connettersi a Shopify'}</div>`;
+        }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Aggiorna Catalogo Online';
+    }
+}
+
+function renderCatalog(products) {
+    const container = document.getElementById('shopify-catalog-container');
+    if (!products || products.length === 0) {
+        container.innerHTML = '<div class="glass-panel" style="padding:40px; text-align:center;">Nessun prodotto trovato su Shopify.</div>';
+        return;
+    }
+
+    let html = `
+        <div class="glass-panel" style="padding: 0; overflow: hidden;">
+            <table class="inventory-table">
+                <thead>
+                    <tr style="background: rgba(0,0,0,0.02);">
+                        <th>Immagine</th>
+                        <th>Titolo Shopify</th>
+                        <th>SKU</th>
+                        <th>Prezzo</th>
+                        <th>Stato</th>
+                        <th style="text-align: right;">Azione</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    products.forEach(p => {
+        const statusColor = p.status === 'ACTIVE' ? '#22C55E' : '#94A3B8';
+        html += `
+            <tr style="border-bottom: 1px solid var(--glass-border);">
+                <td style="width: 80px;">
+                    <div style="width: 50px; height: 50px; background: #f0f0f0; border-radius: 8px; display:flex; align-items:center; justify-content:center;">
+                        <i class="ph ph-handbag" style="font-size: 1.2rem; color: #ccc;"></i>
+                    </div>
+                </td>
+                <td style="font-weight: 600;">${p.title}</td>
+                <td style="font-family: monospace; font-size: 0.85rem;">${p.sku}</td>
+                <td style="font-weight: 700;">€ ${p.price}</td>
+                <td>
+                    <span class="badge" style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30;">
+                        ${p.status}
+                    </span>
+                </td>
+                <td style="text-align: right; padding-right: 20px;">
+                    <button onclick="importToPim('${p.title}', '${p.sku}', '${p.price}')" class="btn glass-btn" style="font-size: 0.75rem; padding: 6px 12px;"><i class="ph ph-download-simple"></i> Importa nel PIM</button>
+                    <button class="btn glass-btn" style="font-size: 1rem; color: var(--text-secondary);"><i class="ph ph-link"></i></button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+}
+
+async function importToPim(title, sku, price) {
+    if(!confirm(`Vuoi importare ${title} (SKU: ${sku}) nel database locale?`)) return;
+    
+    try {
+        const response = await fetch('/api/shopify/import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ title, sku, price })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            alert(`✅ Prodotto importato con successo! ID: ${data.id}\nOra puoi arricchirlo nel Triage o Harvester.`);
+        } else if (data.status === 'exists') {
+            alert(`ℹ️ Nota: ${data.message}`);
+        } else {
+            alert(`❌ Errore durante l'importazione: ${data.error}`);
+        }
+    } catch (err) {
+        alert("Errore di connessione.");
+    }
+}
+
+// Caricamento iniziale
+window.onload = refreshShopifyCatalog;
+</script>
+{% endblock %}

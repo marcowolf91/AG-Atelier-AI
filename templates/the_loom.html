@@ -3,83 +3,407 @@
 {% block content %}
 <div class="page-title">The Loom <span style="font-size:1.2rem; color:var(--text-secondary);">(Data Inbound)</span></div>
 
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--glass-border);">
+<div class="glass-panel" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; padding: 24px; border-left: 4px solid var(--accent-gold);">
     <div>
-        <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary);">Sincronizzazione Sorgenti</h2>
-        <p style="color: var(--text-secondary); font-size: 0.9rem;">Importa le nuove acquisizioni da Google Sheets e Drive.</p>
+        <h2 style="font-weight: 700; font-size: 1.2rem; color: #fff;">Sincronizzazione Sorgenti</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">Importazione flussi dati da Google Sheets e Asset Drive.</p>
     </div>
-    <button onclick="startSync()" id="btn-sync" class="btn glass-btn attr-primary">
-        <i class="ph ph-arrows-clockwise" id="sync-icon"></i> Start Sync
-    </button>
+    <div style="display: flex; gap: 16px; align-items: center;">
+        <button onclick="purgeDatabase()" class="btn glass-btn" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.2);">
+            <i class="ph-duotone ph-trash"></i> Svuota Cache
+        </button>
+        <button onclick="startSync()" id="btn-sync" class="btn attr-primary">
+            <i class="ph-duotone ph-arrows-clockwise" id="sync-icon"></i> Sincronizzazione Master
+        </button>
+    </div>
 </div>
 
-<div id="sync-progress-container" style="display: none; width: 100%; max-width: 400px; margin-bottom: 32px;">
-    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px;">
-        <span style="font-weight: 600; color: var(--accent-black);">In Sync...</span>
+<div id="sync-progress-container" style="display: none; width: 100%; max-width: 450px; margin-bottom: 40px;">
+    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 10px; font-weight: 700; letter-spacing: 1px;">
+        <span style="color: var(--accent-gold);">DATA STREAMING...</span>
         <span id="sync-perc">0%</span>
     </div>
-    <div style="height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; width: 100%;">
-        <div id="sync-bar" style="height: 100%; width: 0%; background: var(--accent-black); transition: width 0.3s ease;"></div>
+    <div style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; width: 100%;">
+        <div id="sync-bar" style="height: 100%; width: 0%; background: var(--accent-gold); box-shadow: 0 0 10px var(--accent-gold-glow); transition: width 0.3s ease;"></div>
     </div>
 </div>
 
-<div class="section-head"><i class="ph ph-list-dashes"></i> Inbox Recenti</div>
-<div class="glass-panel" style="overflow-x: auto;">
-    <table class="inventory-table">
-        <thead>
-            <tr>
-                <th>Status</th>
-                <th>Brand</th>
-                <th>Modello</th>
-                <th>SKU</th>
-                <th>Azione</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in products %}
-            <tr>
-                <td><span class="badge {{ p.status|lower }}">{{ p.status }}</span></td>
-                <td style="font-weight: 500;">{{ p.brand }}</td>
-                <td>{{ p.model }}</td>
-                <td style="font-family: var(--font-serif); color: var(--text-secondary);">{{ p.sku }}</td>
-                <td>
-                    <button class="btn glass-btn" style="padding: 4px 12px; font-size: 0.8rem;">Dettagli</button>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="5" style="text-align: center; color: var(--text-secondary);">Nessun prodotto nel database.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<!-- SEZIONE FOGLI INDIVIDUALI (SORGENTI MASTER) -->
+{% if sheet_info.sheets_list %}
+<div class="page-section-header">
+    <i class="ph-duotone ph-stack"></i> Sorgenti Master (Individual Sheets)
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 40px;">
+    {% for sheet in sheet_info.sheets_list %}
+    <div class="glass-panel" style="padding: 16px; display: flex; flex-direction: column; gap: 12px; border-top: 2px solid var(--accent-gold);">
+        <div style="font-weight: 800; font-size: 0.8rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {{ sheet }}
+        </div>
+        <button onclick="startSync('{{ sheet }}')" class="btn glass-btn" style="width: 100%; font-size: 0.7rem; height: 32px; justify-content: center;">
+            <i class="ph ph-arrows-clockwise"></i> SYNC ORA
+        </button>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="page-section-header">
+    <i class="ph-duotone ph-funnel"></i> Governance & Filtri Avanzati
 </div>
 
-<script>
-    function startSync() {
-        let btn = document.getElementById("btn-sync");
-        let icon = document.getElementById("sync-icon");
-        let container = document.getElementById("sync-progress-container");
-        let bar = document.getElementById("sync-bar");
-        let perc = document.getElementById("sync-perc");
+<div class="glass-panel" style="margin-bottom: 32px; padding: 20px; display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 16px; align-items: center;">
+    <div style="position: relative;">
+        <i class="ph ph-magnifying-glass" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+        <input type="text" id="filter-q" value="{{ filter_q }}" class="glass-input" placeholder="Cerca Brand, SKU, Modello..." style="padding-left: 48px; width: 100%; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--glass-border);">
+    </div>
+    
+    <select id="filter-brand" class="glass-input" style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; padding: 10px; border-radius: 12px;">
+        <option value="" style="background: var(--bg-dark);">Tutti i Brand</option>
+        {% for b in brands %}
+        <option value="{{ b }}" {% if filter_brand == b %}selected{% endif %} style="background: var(--bg-dark);">{{ b }}</option>
+        {% endfor %}
+    </select>
 
-        btn.disabled = true;
-        icon.classList.add("ph-spin");
-        container.style.display = "block";
+    <select id="filter-status" class="glass-input" style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; padding: 10px; border-radius: 12px;">
+        <option value="" style="background: var(--bg-dark);">Tutti i Prodotti</option>
+        <option value="Draft" {% if filter_status == 'Draft' %}selected{% endif %} style="background: var(--bg-dark);">Draft</option>
+        <option value="no_brand" {% if filter_status == 'no_brand' %}selected{% endif %} style="background: var(--bg-dark);">⚠ Senza Brand</option>
+        <option value="no_images" {% if filter_status == 'no_images' %}selected{% endif %} style="background: var(--bg-dark);">⚠ Senza Assets</option>
+    </select>
+
+    <div style="display: flex; gap: 8px;">
+        <button onclick="applyFilters()" class="btn attr-primary" style="padding: 12px 24px;"><i class="ph ph-funnel-simple"></i> Applica</button>
+        <a href="/the-loom" class="btn glass-btn" style="width: 44px; justify-content: center; padding: 0;"><i class="ph ph-arrow-counter-clockwise"></i></a>
+    </div>
+</div>
+
+<div class="page-section-header" style="justify-content: space-between;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <i class="ph-duotone ph-list-numbers"></i> Pipeline Inbound ({% if products %}{{ products|length }}{% else %}0{% endif %})
+    </div>
+    <div id="batch-actions" style="display:none; gap:12px; align-items:center;">
+        <span style="font-size:0.7rem; color:var(--accent-gold); font-weight:800;" id="selection-count">0 SELEZIONATI</span>
+        <button onclick="batchDelete()" class="btn glass-btn" style="color:#ef4444; border-color:rgba(239, 68, 68, 0.2); height:32px; font-size:0.7rem;">ELIMINA</button>
+        <button onclick="batchReclassify()" class="btn attr-primary" style="height:32px; font-size:0.7rem;">AZIONI MASIVE</button>
+    </div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px;">
+    {% for p in products %}
+    <div class="glass-panel loom-item" style="padding: 16px 24px; display: grid; grid-template-columns: auto 2fr 1.5fr 1fr 1fr 1fr auto; gap: 20px; align-items: center;">
+        <input type="checkbox" class="product-checkbox" value="{{ p.id }}" onchange="updateSelectionUI()">
         
-        let progress = 0;
-        let pInt = setInterval(() => {
-            progress += 10;
-            bar.style.width = progress + "%";
-            perc.innerText = progress + "%";
-            
-            if(progress >= 100) {
-                clearInterval(pInt);
-                fetch("/api/sync", {method: "POST"}).then(() => {
-                    setTimeout(() => window.location.reload(), 600);
-                });
-            }
-        }, 150);
+        <!-- Identity -->
+        <div style="display: flex; gap: 16px; align-items: center;">
+            <div style="width: 44px; height: 44px; border-radius: 10px; background: rgba(212,175,55,0.05); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(212,175,55,0.1);">
+                <i class="ph-duotone ph-shield-check" style="font-size: 1.4rem;"></i>
+            </div>
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">{{ p.brand or '-' }}</div>
+                    {% if p.has_master_conflict %}
+                    <i class="ph-fill ph-warning-diamond" style="color: #f59e0b; cursor: pointer; transition: transform 0.2s;" 
+                       onclick="showConflictDetails({{ p.id }})"
+                       title="Rilevata modifica nel Master Sheet! Clicca per vedere i dettagli."></i>
+                    {% endif %}
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary);">{{ p.model or '-' }}</div>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div>
+            {% set completeness = (p.match_confidence or 0)|int %} 
+            <div style="font-size: 0.65rem; font-weight: 700; margin-bottom: 4px; color: var(--text-secondary); text-transform: uppercase;">Integrità Dati: {{ completeness }}%</div>
+            <div style="height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                <div style="width: {{ completeness }}%; height: 100%; background: {% if completeness >= 80 %}#22C55E{% elif completeness >= 40 %}#F59E0B{% else %}#EF4444{% endif %};"></div>
+            </div>
+        </div>
+
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            <i class="ph ph-cube"></i> {{ (p.material|string)[:15] if p.material else '-' }}
+        </div>
+
+        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            <i class="ph ph-palette"></i> {{ p.color or '-' }}
+        </div>
+
+        <div style="font-weight: 700; color: #fff;">
+            € {{ p.price or '0.00' }}
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            {% if p.has_master_conflict %}
+                <button onclick="resolveMasterConflict({{ p.id }}, 'apply')" class="btn attr-primary" style="background: #f59e0b; border: none; height: 32px; font-size: 0.65rem; padding: 0 8px;">APPLICA MASTER</button>
+                <button onclick="resolveMasterConflict({{ p.id }}, 'ignore')" class="btn glass-btn" style="height: 32px; font-size: 0.65rem; padding: 0 8px;">IGNORA</button>
+            {% else %}
+                <button onclick="quickFix({{ p.id }})" class="btn glass-btn" style="width:36px; height:36px; padding:0; justify-content:center; border:none;"><i class="ph ph-pencil-simple"></i></button>
+                <button onclick="removeProduct({{ p.id }})" class="btn glass-btn" style="width:36px; height:36px; padding:0; justify-content:center; border:none; color: #ef4444;"><i class="ph ph-trash"></i></button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- MODAL DETTAGLI CONFLITTO -->
+<div id="conflict-modal" class="modal-overlay" style="display:none; z-index: 10001;">
+    <div class="modal-content glass-panel" style="max-width: 550px; padding: 32px; border-top: 4px solid #f59e0b;">
+        <h2 style="font-size: 1.3rem; font-weight: 800; color: #fff; margin-bottom: 8px;">
+            <i class="ph ph-warning-diamond" style="color:#f59e0b;"></i> Variazione Rilevata nel Master
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 24px;">Il file Master Sheet è stato modificato. Ecco cosa cambierebbe se approvassi:</p>
+        
+        <div id="conflict-diff-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px;">
+            <!-- Riempito via JS -->
+        </div>
+
+        <div style="display: flex; gap: 16px;">
+            <button onclick="closeConflictModal()" class="btn glass-btn" style="flex: 1;">CHIUDI</button>
+            <button id="btn-apply-conflict" class="btn attr-primary" style="flex: 1; background: #f59e0b; border: none;">APPLICA MODIFICHE</button>
+        </div>
+    </div>
+</div>
+
+{% include 'components/product_editor.html' %}
+
+<div class="page-section-header">
+    <i class="ph-duotone ph-terminal-window"></i> Sala Macchine: Master Data Pipeline Logs
+</div>
+<div class="glass-panel" id="console-logs" style="background: rgba(0,0,0,0.4); height: 180px; overflow-y: auto; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #4ade80; border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; margin-bottom: 40px;">
+    <div style="color: #666; font-style: italic;">> In attesa di input per il kernel dati...</div>
+</div>
+
+<style>
+.page-section-header { margin: 40px 0 20px; font-weight: 700; font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px; display: flex; align-items: center; gap: 12px; }
+.loom-item { transition: all 0.2s ease; border-left: 2px solid transparent; }
+.loom-item:hover { border-left-color: var(--accent-gold); background: rgba(255,255,255,0.02); transform: translateX(4px); }
+.product-checkbox { width: 18px; height: 18px; accent-color: var(--accent-gold); cursor: pointer; }
+</style>
+
+<script>
+    function updateSelectionUI() {
+        const checked = document.querySelectorAll('.product-checkbox:checked');
+        const batchEl = document.getElementById('batch-actions');
+        const countEl = document.getElementById('selection-count');
+        
+        if(checked.length > 0) {
+            batchEl.style.display = 'flex';
+            countEl.innerText = `${checked.length} SELEZIONATI`;
+        } else {
+            batchEl.style.display = 'none';
+        }
     }
+
+    async function batchDelete() {
+        const ids = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(el => el.value);
+        if(!confirm(`Eliminare definitivamente ${ids.length} prodotti?`)) return;
+        
+        const res = await fetch('/api/product/delete-bulk', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids: ids })
+        });
+        if(res.ok) {
+            showToast(`Eliminati ${ids.length} prodotti.`, "success");
+            location.reload();
+        }
+    }
+
+    async function resolveMasterConflict(pid, action) {
+        const msg = action === 'apply' ? "Applicazione dati Master..." : "Rimozione allerta...";
+        showToast(msg);
+        try {
+            const res = await fetch(`/api/sync/resolve-conflict/${pid}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ action: action })
+            });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                showToast(data.message, "success");
+                location.reload();
+            } else {
+                showToast(data.message, "error");
+            }
+        } catch(e) {
+            showToast("Errore di connessione.", "error");
+        }
+    }
+
+    async function batchReclassify() {
+        const ids = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(el => el.value);
+        const catName = prompt("Inserisci l'ID della nuova categoria di governance (o annulla):");
+        if(!catName) return;
+        
+        showToast("Riclassificazione massiva in corso...");
+        // In una app reale, faremmo un loop o una rotta bulk. Per ora loop semplice.
+        for(let pid of ids) {
+            await fetch(`/api/product/reclassify/${pid}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ category_id: parseInt(catName) })
+            });
+        }
+        showToast("Completato!", "success");
+        location.reload();
+    }
+
+    let syncTimer = null;
+    async function startSync(sheetName = null) {
+        const btn = document.getElementById('btn-sync');
+        const container = document.getElementById('sync-progress-container');
+        const progressBar = document.getElementById('sync-bar');
+        const progressPct = document.getElementById('sync-perc');
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph-bold ph-spinner ph-spin"></i> streaming...';
+        container.style.display = 'block';
+        
+        if(sheetName) {
+            showToast(`Avvio sincronizzazione per: ${sheetName}...`);
+        } else {
+            showToast("Avvio streaming master completo...");
+        }
+
+        try {
+            const res = await fetch('/api/sync', { 
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ target_sheet: sheetName })
+            });
+            if(!res.ok) throw new Error("Errore Start");
+            
+            // Avviamo il polling costante dello stato
+            syncTimer = setInterval(async () => {
+                try {
+                    const statusRes = await fetch('/api/sync/status');
+                    const status = await statusRes.json();
+                    
+                    if(status.total_sheets > 0) {
+                        const pct = Math.round((status.current_sheet_idx / status.total_sheets) * 100);
+                        if(progressBar) progressBar.style.width = `${pct}%`;
+                        if(progressPct) progressPct.innerText = `${pct}%`;
+                    }
+                    
+                    if(!status.is_running && status.total_sheets > 0) {
+                        clearInterval(syncTimer);
+                        showToast(`Sincronizzazione completata: +${status.last_imported} nuovi.`);
+                        setTimeout(() => location.reload(), 1500);
+                    }
+                } catch(e) {}
+            }, 1000);
+
+        } catch(e) { 
+            showToast("Impossibile avviare la sincronizzazione.", "error");
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ph-bold ph-lightning"></i> STREAMING DATI...';
+        }
+    }
+    
+    function applyFilters() {
+        const q = document.getElementById('filter-q').value;
+        const brand = document.getElementById('filter-brand').value;
+        const status = document.getElementById('filter-status').value;
+        window.location.href = `/the-loom?q=${q}&brand=${brand}&status=${status}`;
+    }
+
+    function removeProduct(id) {
+        if(!confirm("Rimuovere definitivamente questo record locale?")) return;
+        fetch(`/api/product/delete-bulk`, { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids: [id] })
+        }).then(() => location.reload());
+    }
+
+    function purgeDatabase() {
+        if(!confirm("SVUOTARE COMPLETAMENTE LA CACHE LOCALE? Azione irreversibile.")) return;
+        fetch('/api/database/purge', { method: 'POST' }).then(() => location.reload());
+    }
+    
+    // Global Search Integration
+    const searchInput = document.getElementById('global-search');
+    if(searchInput) {
+        // Instant Filtering
+        searchInput.addEventListener('input', function(e) {
+            const term = e.target.value.toLowerCase();
+            document.querySelectorAll('.loom-item').forEach(item => {
+                const text = item.innerText.toLowerCase();
+                item.style.display = text.includes(term) ? 'grid' : 'none';
+            });
+            // Sync with local filter input
+            const localQ = document.getElementById('filter-q');
+            if(localQ) localQ.value = e.target.value;
+        });
+    }
+
+    window.addEventListener('atelier-search-submit', (e) => {
+        applyFilters();
+    });
+
+    async function showConflictDetails(pid) {
+        const modal = document.getElementById('conflict-modal');
+        const list = document.getElementById('conflict-diff-list');
+        const applyBtn = document.getElementById('btn-apply-conflict');
+        
+        list.innerHTML = '<div style="text-align:center; padding:20px;"><i class="ph ph-circle-notch ph-spin"></i> Analisi differenze...</div>';
+        modal.style.display = 'flex';
+        
+        try {
+            const res = await fetch(`/api/sync/conflict-details/${pid}`);
+            const data = await res.json();
+            
+            if(data.status === 'ok') {
+                list.innerHTML = '';
+                if(data.diff.length === 0) {
+                    list.innerHTML = '<div style="color:var(--text-secondary); text-align:center;">Nessuna differenza sostanziale rilevata.</div>';
+                } else {
+                    data.diff.forEach(d => {
+                        const row = document.createElement('div');
+                        row.className = 'glass-panel';
+                        row.style.padding = '12px 16px';
+                        row.style.background = 'rgba(255,255,255,0.02)';
+                        row.innerHTML = `
+                            <div style="font-size:0.7rem; font-weight:800; color:var(--accent-gold); text-transform:uppercase; margin-bottom:4px;">${d.field}</div>
+                            <div style="display:grid; grid-template-columns: 1fr auto 1fr; gap:12px; align-items:center;">
+                                <div style="font-size:0.85rem; color:#ef4444; opacity:0.7; text-decoration:line-through;">${d.old || '(vuoto)'}</div>
+                                <i class="ph ph-arrow-right" style="color:var(--text-secondary);"></i>
+                                <div style="font-size:0.85rem; color:#22c55e; font-weight:700;">${d.new || '(vuoto)'}</div>
+                            </div>
+                        `;
+                        list.appendChild(row);
+                    });
+                }
+                applyBtn.onclick = () => { resolveMasterConflict(pid, 'apply'); closeConflictModal(); };
+            } else {
+                list.innerHTML = `<div style="color:#ef4444;">${data.message}</div>`;
+            }
+        } catch(e) {
+            list.innerHTML = '<div style="color:#ef4444;">Errore di caricamento.</div>';
+        }
+    }
+
+    function closeConflictModal() {
+        document.getElementById('conflict-modal').style.display = 'none';
+    }
+
+    // Interval for logs
+    setInterval(async () => {
+        try {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+            const logBox = document.getElementById('console-logs');
+            if(data.logs.length) {
+                const decoratedLogs = data.logs.map(l => {
+                    let color = "#4ade80";
+                    if(l.includes("Error") || l.includes("❌")) color = "#ef4444";
+                    if(l.includes("[The Loom]")) color = "var(--accent-gold)";
+                    return `<div style="color: ${color}">> ${l}</div>`;
+                }).join('');
+                logBox.innerHTML = decoratedLogs + '<div class="blinking-cursor">_</div>';
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+        } catch(e) {}
+    }, 1500);
 </script>
 {% endblock %}

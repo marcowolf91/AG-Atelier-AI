@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Shopify Cloud <span style="font-size:1.2rem; color:var(--text-secondary);">(Live Sync)</span></div>
+
+<div class="glass-panel" style="padding: 32px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+        <div>
+            <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary); margin-bottom: 8px;">Bridge di Pubblicazione</h2>
+            <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 600px;">
+                Sincronizza asincronamente i prodotti "Ready" verso l'istanza Shopify configurata, associando Metafields ed elaborando le varianti.
+            </p>
+        </div>
+        <button onclick="startShopifyCloud()" id="btn-cloud-sync" class="btn glass-btn attr-primary" style="background: var(--accent-green); border-color: var(--accent-green);">
+            <i class="ph ph-cloud-arrow-up" id="cloud-icon"></i> Upload Ready Items
+        </button>
+    </div>
+</div>
+
+<!-- Toast Container in basso a destra -->
+<div class="toast-container" id="toast-bin"></div>
+
+<script>
+function showToast(message, iconClass="ph-check-circle") {
+    let bin = document.getElementById("toast-bin");
+    let t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = `<i class="ph ${iconClass}" style="font-size: 1.5rem; color: #FFF;"></i> <span>${message}</span>`;
+    bin.appendChild(t);
+    
+    requestAnimationFrame(() => {
+        setTimeout(() => t.classList.add("show"), 50);
+    });
+    
+    setTimeout(() => {
+        t.classList.remove("show");
+        setTimeout(() => t.remove(), 400);
+    }, 4000);
+}
+
+function startShopifyCloud() {
+    let btn = document.getElementById("btn-cloud-sync");
+    let icon = document.getElementById("cloud-icon");
+    btn.disabled = true;
+    icon.classList.add("ph-spin");
+    
+    fetch("/api/bridge/publish", {method: "POST"})
+        .then(res => res.json())
+        .then(data => {
+            icon.classList.remove("ph-spin");
+            btn.disabled = false;
+            
+            if (data.status === "ok" || data.status === "empty") {
+                if (data.published > 0) {
+                    showToast(`Sincronizzazione API completata. ${data.published} items pubblicati.`);
+                } else {
+                    showToast("Nessun articolo in stato Ready.", "ph-info");
+                }
+            } else {
+                showToast("Errore di connessione API.", "ph-warning-circle");
+            }
+        }).catch(e => {
+            icon.classList.remove("ph-spin");
+            btn.disabled = false;
+        });
+}
+</script>
+{% endblock %}

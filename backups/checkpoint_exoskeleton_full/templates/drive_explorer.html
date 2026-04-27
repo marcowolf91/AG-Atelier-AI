@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Digital Assets Lab <span style="font-size:1.2rem; color:var(--text-secondary);">(Media Intelligence)</span></div>
+
+<!-- WORKFLOW PIPELINE TRACKER -->
+<div class="glass-panel" style="padding: 24px; margin-bottom: 32px; background: #fff;">
+    <div style="display: flex; justify-content: space-between; align-items: center; position: relative;">
+        <div style="position: absolute; top: 22px; left: 0; width: 100%; height: 2px; background: #eee; z-index: 1;"></div>
+        
+        <div class="step-blob active">
+            <div class="step-num">1</div>
+            <span>Acquisizione</span>
+        </div>
+        <div class="step-blob">
+            <div class="step-num">2</div>
+            <span>Sviluppo (Laboratorio)</span>
+        </div>
+        <div class="step-blob">
+            <div class="step-num">3</div>
+            <span>Ottimizzazione AI</span>
+        </div>
+        <div class="step-blob">
+            <div class="step-num">4</div>
+            <span>Distribuzione</span>
+        </div>
+    </div>
+</div>
+
+<!-- TOOLS DASHBOARD -->
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px;">
+    <div class="glass-panel" style="padding: 20px;">
+        <span class="stat-label">HEIC RILEVATI</span>
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span class="stat-value" id="count-heic">{{ stats.heic }}</span>
+            <span style="font-size: 0.7rem; color: var(--text-secondary);">formato grezzo Apple</span>
+        </div>
+    </div>
+    <div class="glass-panel" style="padding: 20px;">
+        <span class="stat-label">FILE PRONTI</span>
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span class="stat-value" id="count-jpeg" style="color: var(--accent-green);">{{ stats.jpeg }}</span>
+            <span style="font-size: 0.7rem; color: var(--text-secondary);">formato web ottimizzato</span>
+        </div>
+    </div>
+    <div class="glass-panel" style="padding: 20px; border: 1px dashed #ccc; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;">
+        <button id="btn-convert-bulk" onclick="startLabConversion()" class="btn glass-btn attr-primary" style="background: #000; width: 100%;">
+            Sviluppa Selezionati in JPEG
+        </button>
+        <span style="font-size: 0.6rem; color: #666;">Crea cartella /convertite su Drive</span>
+    </div>
+</div>
+
+<div class="content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="font-size: 0.8rem; font-weight: 600; color: #666; display: flex; align-items: center; gap: 20px;">
+            <i class="ph ph-stack"></i> LISTA ASSET NELLA CARTELLA ATTUALE
+            
+            <div style="display: flex; gap: 12px; margin-left:20px;">
+                <a href="/drive-explorer?filter=heic" class="tab-item {% if filter_type == 'heic' %}active{% endif %}" style="font-size: 0.75rem;">Da Sviluppare (HEIC)</a>
+                <a href="/drive-explorer?filter=jpeg" class="tab-item {% if filter_type == 'jpeg' %}active{% endif %}" style="font-size: 0.75rem;">Sviluppati (JPEG)</a>
+                <a href="/drive-explorer?filter=all" class="tab-item {% if filter_type == 'all' %}active{% endif %}" style="font-size: 0.75rem;">Tutti</a>
+            </div>
+        </div>
+        <div id="selection-status" style="font-size: 0.75rem; color: var(--accent-gold); font-weight: 600; display: none;">
+            <i class="ph ph-check-square"></i> <span id="sel-num">0</span> asset pronti per lo sviluppo
+        </div>
+    </div>
+    
+    <style>
+    .tab-item { padding: 4px 12px; font-weight: 600; color: var(--text-secondary); text-decoration: none; border: 1px solid transparent; border-radius: 12px; transition: all 0.2s; }
+    .tab-item:hover { background: rgba(0,0,0,0.05); }
+    .tab-item.active { background: #000; color: #fff; }
+    </style>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 24px;">
+        {% for file in files %}
+        <div class="glass-panel asset-card" data-id="{{ file.id }}" onclick="toggleSelect('{{ file.id }}')">
+            <div class="card-selection"><i class="ph ph-circle"></i></div>
+            
+            <div class="img-container">
+                {% if file.name.lower().endswith('.heic') or file.name.lower().endswith('.heif') %}
+                <div class="fmt-badge">HEIC</div>
+                {% endif %}
+                <img src="/api/drive/proxy/{{ file.id }}" alt="{{ file.name }}" loading="lazy">
+            </div>
+            
+            <div style="padding: 12px;">
+                <div class="asset-name">{{ file.name }}</div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: #999;">
+                    <span>{{ (file.size|int / 1024 / 1024)|round(2) if file.size else '0' }} MB</span>
+                    <span>ID: {{ file.id[:8] }}...</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.step-blob { position: relative; z-index: 2; background: #fff; padding: 0 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 0.7rem; font-weight: 700; color: #ccc; }
+.step-blob.active { color: #000; }
+.step-num { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #eee; display: flex; align-items: center; justify-content: center; font-family: var(--font-serif); font-size: 1.2rem; background: #fff; transition: all 0.3s; }
+.step-blob.active .step-num { border-color: #000; background: #000; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+.asset-card { padding: 0; overflow: hidden; position: relative; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+.asset-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.05); }
+.asset-card.selected { border-color: #000; background: #f9f9f9; }
+
+.card-selection { position: absolute; top: 12px; left: 12px; z-index: 5; color: #fff; font-size: 1.2rem; filter: drop-shadow(0 0 4px rgba(0,0,0,0.5)); transition: all 0.2s; }
+.asset-card.selected .card-selection { color: #000; }
+.asset-card.selected .card-selection i::before { content: "\f12e" !important; } /* check-circle */
+
+.img-container { height: 180px; background: #f0f0f0; position: relative; overflow: hidden; }
+.img-container img { width: 100%; height: 100%; object-fit: cover; transition: all 0.5s; }
+.asset-card:hover .img-container img { transform: scale(1.05); }
+
+.fmt-badge { position: absolute; top: 12px; right: 12px; z-index: 5; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; backdrop-filter: blur(4px); }
+.asset-name { font-size: 0.75rem; font-weight: 700; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.stat-label { font-size: 0.65rem; font-weight: 800; color: #999; letter-spacing: 1px; margin-bottom: 4px; display: block; }
+.stat-value { font-family: var(--font-serif); font-size: 2rem; line-height: 1; }
+</style>
+
+<script>
+    let selectedAssets = new Set();
+
+    function toggleSelect(id) {
+        const card = document.querySelector(`.asset-card[data-id="${id}"]`);
+        if (selectedAssets.has(id)) {
+            selectedAssets.delete(id);
+            card.classList.remove('selected');
+        } else {
+            selectedAssets.add(id);
+            card.classList.add('selected');
+        }
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        const count = selectedAssets.size;
+        const bar = document.getElementById('selection-status');
+        const btn = document.getElementById('btn-convert-bulk');
+        
+        if (count > 0) {
+            bar.style.display = 'block';
+            document.getElementById('sel-num').innerText = count;
+            btn.innerHTML = `Sviluppa ${count} Asset in JPEG`;
+            btn.style.background = '#000';
+        } else {
+            bar.style.display = 'none';
+            btn.innerHTML = 'Sviluppa Selezionati';
+            btn.style.background = '#ccc';
+        }
+    }
+
+    async function startLabConversion() {
+        if (selectedAssets.size === 0) return alert("Seleziona almeno una foto per lo sviluppo.");
+        
+        const btn = document.getElementById('btn-convert-bulk');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Sviluppo in corso...`;
+        
+        // Passiamo alla fase 2 visivamente
+        document.querySelectorAll('.step-blob')[1].classList.add('active');
+        
+        const ids = Array.from(selectedAssets);
+        try {
+            const res = await fetch('/api/drive/convert', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ids: ids})
+            });
+            const data = await res.json();
+            if (data.status === 'finished') {
+                // Fase finale
+                document.querySelectorAll('.step-blob')[3].classList.add('active');
+                alert("Sviluppo completato! Gli asset convertiti sono ora nell'archivio 'convertite' su Drive.");
+                location.reload();
+            } else {
+                alert("Errore durante lo sviluppo: " + data.error);
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        } catch(e) {
+            alert("Errore di connessione al laboratorio.");
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+</script>
+{% endblock %}

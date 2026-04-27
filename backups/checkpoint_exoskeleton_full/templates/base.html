@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atelier AI | {{ title | default('Dashboard') }}</title>
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Sfondo animato -->
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <i class="ph ph-sparkle"></i>
+                <span>Atelier AI</span>
+            </div>
+            
+            <div class="nav-menu">
+                <div class="sidebar-category">Monitoraggio</div>
+                <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+                    <i class="ph ph-squares-four"></i>
+                    <span>Panoramica</span>
+                </a>
+                <a href="/engine-room" class="nav-item {% if active_page == 'engine_room' %}active{% endif %}">
+                    <i class="ph ph-sliders"></i>
+                    <span>Sala Macchine</span>
+                </a>
+                <a href="/system-logs" class="nav-item {% if active_page == 'system_logs' %}active{% endif %}">
+                    <i class="ph ph-terminal"></i>
+                    <span>Log di Sistema</span>
+                </a>
+
+                <div class="sidebar-category">Moduli Dati (Loom)</div>
+                <a href="/the-loom" class="nav-item {% if active_page == 'the_loom' %}active{% endif %}">
+                    <i class="ph ph-database"></i>
+                    <span>Importazione Dati</span>
+                </a>
+                <a href="/loom-mapping" class="nav-item {% if active_page == 'loom_mapping' %}active{% endif %}">
+                    <i class="ph ph-tree-structure"></i>
+                    <span>Mappatura Regole</span>
+                </a>
+                <a href="/drive-explorer" class="nav-item {% if active_page == 'drive_explorer' %}active{% endif %}">
+                    <i class="ph ph-cloud-arrow-down"></i>
+                    <span>Asset Digitali (Drive)</span>
+                </a>
+
+                <div class="sidebar-category">Moduli AI</div>
+                <a href="/the-harvester" class="nav-item {% if active_page == 'the_harvester' %}active{% endif %}">
+                    <i class="ph ph-cpu"></i>
+                    <span>Harvester (Ricerca)</span>
+                </a>
+                <a href="/asset-vault" class="nav-item {% if active_page == 'asset_vault' %}active{% endif %}">
+                    <i class="ph ph-safe"></i>
+                    <span>Asset Vault (Audit)</span>
+                </a>
+                <a href="/the-muse" class="nav-item {% if active_page == 'the_muse' %}active{% endif %}">
+                    <i class="ph ph-pen-nib"></i>
+                    <span>The Muse (AI Writer)</span>
+                </a>
+                <a href="/tag-central" class="nav-item {% if active_page == 'tag_central' %}active{% endif %}">
+                    <i class="ph ph-tag"></i>
+                    <span>Tag Central (Meta)</span>
+                </a>
+                <a href="/ai-foundry" class="nav-item {% if active_page == 'ai_foundry' %}active{% endif %}">
+                    <i class="ph ph-cpu"></i>
+                    <span>Fonderia AI (Locale)</span>
+                </a>
+                <a href="/prompt-vault" class="nav-item {% if active_page == 'prompt_vault' %}active{% endif %}">
+                    <i class="ph ph-brain"></i>
+                    <span>Archivio Prompt</span>
+                </a>
+
+                <div class="sidebar-category">Inventario & Lab</div>
+                <a href="/media-vault" class="nav-item {% if active_page == 'media_vault' %}active{% endif %}">
+                    <i class="ph ph-images"></i>
+                    <span>Archivio Media</span>
+                </a>
+                <a href="/atelier-lab" class="nav-item {% if active_page == 'atelier_lab' %}active{% endif %}">
+                    <i class="ph ph-flask"></i>
+                    <span>Laboratorio Atelier</span>
+                </a>
+                <a href="/catalog" class="nav-item {% if active_page == 'catalog' %}active{% endif %}">
+                    <i class="ph ph-books"></i>
+                    <span>Catalogo Master</span>
+                </a>
+
+                <div class="sidebar-category">Shopify Sync</div>
+                <a href="/shopify-cloud" class="nav-item {% if active_page == 'shopify_cloud' %}active{% endif %}">
+                    <i class="ph ph-cloud-arrow-up"></i>
+                    <span>Sync Bridge (Cloud)</span>
+                </a>
+                <a href="/shopify-mirror" class="nav-item {% if active_page == 'shopify_mirror' %}active{% endif %}">
+                    <i class="ph ph-storefront"></i>
+                    <span>Shopify Mirror (Live)</span>
+                </a>
+                <a href="/shopify-routing" class="nav-item {% if active_page == 'shopify_routing' %}active{% endif %}">
+                    <i class="ph ph-git-branch"></i>
+                    <span>Regole Routing</span>
+                </a>
+            </div>
+
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <header class="topbar glass-panel">
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Cerca SKU, Brand, Modello...">
+                </div>
+                <!-- Mini LED indicator globale -->
+                <div class="system-status-pill glass-panel {% if all_systems_go %}go{% else %}warn{% endif %}">
+                    <div class="status-led {% if all_systems_go %}green{% else %}red{% endif %}"></div>
+                    <span style="font-size: 0.8rem;">
+                        {% if all_systems_go %}Sistemi OK{% else %}Setup API Richiesto{% endif %}
+                    </span>
+                </div>
+                <div class="actions" style="margin-left: auto;">
+                    <button class="btn glass-btn"><i class="ph ph-bell"></i></button>
+                    <button class="btn glass-btn attr-primary">Nuovo Prodotto</button>
+                    
+                    <div class="user-profile" style="margin-left: 24px; padding-left: 24px; border-left: 1px solid var(--glass-border); display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                        <div class="avatar" style="width: 36px; height: 36px; border-radius: 50%; background: var(--bg-color); border: 1px solid var(--glass-border); color: var(--text-primary); display: flex; align-items: center; justify-content: center; font-size: 1rem;">
+                            <i class="ph ph-user"></i>
+                        </div>
+                        <span style="font-weight: 500; font-size: 0.9rem; color: var(--text-primary);">System Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+            
+            <!-- Activity Sidebar (The Pulse) -->
+            <div id="activity-sidebar" class="glass-panel" style="position:fixed; top:0; right:-350px; width:350px; height:100vh; z-index:2000; transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); border-left: 1px solid var(--glass-border); padding: 0; display:flex; flex-direction:column;">
+                <div style="padding: 24px; border-bottom: 1px solid var(--glass-border); display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.4);">
+                    <h3 style="font-size: 1.1rem; font-weight: 700;"><i class="ph ph-activity" style="color:var(--accent-gold);"></i> Activity Pulse</h3>
+                    <button onclick="toggleActivity()" class="btn glass-btn" style="padding:4px;"><i class="ph ph-x"></i></button>
+                </div>
+                <div id="activity-list" style="flex:1; overflow-y:auto; padding: 16px; display:flex; flex-direction:column; gap:8px; font-family: monospace; font-size: 0.75rem;">
+                    <!-- Logs go here -->
+                    <div style="color:var(--text-secondary); text-align:center; padding:20px;">Caricamento attività...</div>
+                </div>
+            </div>
+            <div id="activity-overlay" onclick="toggleActivity()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.2); z-index:1999; backdrop-filter: blur(2px);"></div>
+
+        </main>
+    </div>
+
+    <script>
+        let activityOpen = false;
+        function toggleActivity() {
+            activityOpen = !activityOpen;
+            const sidebar = document.getElementById('activity-sidebar');
+            const overlay = document.getElementById('activity-overlay');
+            sidebar.style.right = activityOpen ? '0' : '-350px';
+            overlay.style.display = activityOpen ? 'block' : 'none';
+            if(activityOpen) fetchActivity();
+        }
+
+        async function fetchActivity() {
+            try {
+                const res = await fetch('/api/system/activity');
+                const data = await res.json();
+                const list = document.getElementById('activity-list');
+                if(data.logs && data.logs.length > 0) {
+                    list.innerHTML = data.logs.reverse().map(log => `
+                        <div style="padding: 10px; background: rgba(255,255,255,0.5); border-radius: 8px; border: 1px solid rgba(0,0,0,0.03); line-height:1.4;">
+                            <span style="color: var(--accent-gold); font-weight:700;">></span> ${log}
+                        </div>
+                    `).join('');
+                }
+            } catch(e) { console.error("Activity sync failed", e); }
+        }
+
+        // Auto-refresh Activity every 10 seconds if open
+        setInterval(() => {
+            if(activityOpen) fetchActivity();
+        }, 10000);
+
+        // Bind the bell button
+        document.querySelector('.ph-bell').parentElement.onclick = toggleActivity;
+    </script>
+
+</body>
+</html>

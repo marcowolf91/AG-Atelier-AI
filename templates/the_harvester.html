@@ -1,92 +1,753 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="page-title">The Harvester <span style="font-size:1.2rem; color:var(--text-secondary);">(AI Enrichment)</span></div>
+<div class="page-title">The Harvester <span style="font-size:1.2rem; color:var(--text-secondary);">(AI Enrichment & Deep Mapper)</span></div>
 
-<div class="glass-panel" style="padding: 32px; margin-bottom: 32px;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
-        <div style="flex-grow: 1;">
-            <h2 style="font-weight: 600; font-size: 1.2rem; color: var(--text-primary); margin-bottom: 8px;">Motore Semantico & Web Search</h2>
-            <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 600px; margin-bottom: 24px;">
-                Personalizza l'intensità della ricerca per isolare i prodotti.
-            </p>
-            
-            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
-                <div class="input-group">
-                    <label style="font-size: 0.8rem; color: var(--text-secondary);">Profondità SERP</label>
-                    <select class="glass-input" id="serp-depth" style="padding: 8px 12px;">
-                        <option value="top3">Top 3 (Veloce)</option>
-                        <option value="top10">Top 10 Google</option>
-                        <option value="deep">Deep Search (Siti Multipli)</option>
-                    </select>
-                </div>
-                <div class="input-group" style="padding-top: 24px;">
-                    <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 0.9rem;">
-                        <input type="checkbox" id="include-official" checked>
-                        <span class="checkmark"></span>
-                        Forza ricerca Sito Ufficiale (se disponibile)
-                    </label>
-                </div>
-                <div class="input-group" style="padding-top: 24px;">
-                    <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 0.9rem;">
-                        <input type="checkbox" id="auto-tag">
-                        <span class="checkmark"></span>
-                        Auto-Assegnazione Tag in fase di scrap
-                    </label>
-                </div>
-            </div>
-        </div>
-        
-        <button onclick="startHarvester()" id="btn-harvest" class="btn glass-btn attr-primary" style="background: var(--accent-gold); border-color: var(--accent-gold); white-space: nowrap; margin-left: 24px;">
-            <i class="ph ph-lightning"></i> Avvia AI Enrichment
-        </button>
-        <button onclick="alert('Recupero task in timeout / errore in corso...');" class="btn glass-btn" style="border-color: var(--accent-red); color: var(--accent-red); white-space: nowrap; margin-left: 12px;" title="Riavvia task falliti">
-            <i class="ph ph-arrow-counter-clockwise"></i> Retry Blocchi
-        </button>
+<div class="glass-panel" style="margin-bottom: 32px; padding: 24px; border-left: 4px solid var(--accent-gold); display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h2 style="font-weight: 700; font-size: 1.2rem; color: #fff; margin-bottom: 4px;">Ricerca & Arricchimento</h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">Motore di matching profondo tra PIM e Asset Drive con scoring quantitativo.</p>
     </div>
-
-    <!-- Harvester Console -->
-    <div class="console-box" id="harvester-console" style="height: 300px; overflow-y: auto;">
-        <div>[Harvester] Standby. In attesa di elaborazione batch...</div>
+    <div style="display: flex; gap: 16px; align-items: center;">
+        <span id="selection-count" style="font-size: 0.75rem; color: var(--accent-gold); font-weight: 700; background: rgba(212,175,55,0.1); padding: 4px 12px; border-radius: 20px; display: none;"></span>
+        <button onclick="startHarvesting('selected')" id="btn-harvest-selected" class="btn attr-primary" style="display: none;">
+            <i class="ph-duotone ph-selection-all"></i> Arricchisci Selezione
+        </button>
+        <button onclick="startHarvesting('all')" id="btn-harvest-all" class="btn glass-btn">
+            <i class="ph-duotone ph-arrows-clockwise"></i> Arricchisci Coda Totale
+        </button>
     </div>
 </div>
 
-<script>
-    let pollInterval;
-    function startHarvester() {
-        let btn = document.getElementById('btn-harvest');
-        btn.disabled = true;
+<div class="page-section-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <span><i class="ph-duotone ph-list-numbers"></i> Pipeline Granulare di Processo ({{ products|length }})</span>
+</div>
 
-        fetch("/api/harvester/start", {method: "POST"})
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'started') {
-                    document.getElementById('harvester-console').innerHTML = "<div>Avvio Harvester asincrono in background...</div>";
-                    startPollingLogs();
-                }
-            }).catch(e => btn.disabled = false);
-    }
+<!-- Barra di Stato Globale Motore -->
+<div id="active-engine-bar" style="display: none; background: rgba(212,175,55,0.03); border: 1px solid rgba(212,175,55,0.1); padding: 16px 24px; border-radius: 20px; margin-bottom: 24px; align-items: center; gap: 20px; backdrop-filter: blur(10px);">
+    <div style="width: 48px; height: 48px; background: rgba(212,175,55,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+        <i class="ph-bold ph-spinner ph-spin" style="color: var(--accent-gold); font-size: 1.5rem;"></i>
+    </div>
+    <div style="flex: 1;">
+        <div style="font-size: 0.6rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px;">Arricchimento AI in Corso</div>
+        <div id="engine-current-task" style="font-size: 0.9rem; color: #fff; font-weight: 600;">Sincronizzazione parametri...</div>
+    </div>
+    <div id="batch-progress-container" style="display: none; width: 250px; height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);">
+        <div id="batch-progress-bar" style="width: 0%; height: 100%; background: var(--accent-gold); box-shadow: 0 0 15px var(--accent-gold);"></div>
+    </div>
+    <div id="engine-batch-info" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 800; letter-spacing: 1px; min-width: 80px; text-align: right;">0 / 0</div>
+</div>
 
-    function startPollingLogs() {
-        if (pollInterval) clearInterval(pollInterval);
+<div class="glass-panel" style="padding: 0; overflow: hidden; border: 1px solid var(--glass-border);">
+    <table class="inventory-table">
+        <thead>
+            <tr>
+                <th onclick="sortTable('id')" style="width: 80px; padding-left:24px; cursor: pointer;"># <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
+                <th style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleAll(this)"></th>
+                <th onclick="sortTable('pim')" style="cursor: pointer;">Sorgente PIM <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
+                <th onclick="sortTable('category')" style="cursor: pointer;">Tipo Prodotto <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
+                <th onclick="sortTable('score')" style="cursor: pointer;">Confidence Meta <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
+                <th>Mapping SEO</th>
+                <th>Assets (Drive)</th>
+                <th style="text-align: right; padding-right: 24px;">Azioni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            {% set score = p.match_confidence or 0 %}
+            <tr id="row-{{ p.id }}" class="harvester-row {% if p.is_ai_processing %}processing{% endif %}" 
+                data-search="{{ p.brand }} {{ p.model }} {{ p.id }}"
+                data-id="{{ p.id }}" 
+                data-pim="{{ p.brand }} {{ p.model }}" 
+                data-category="{{ (p.category or '')|e }}"
+                data-score="{{ score }}">
+                <td style="padding-left:24px; font-size: 0.7rem; color: var(--accent-gold); font-weight: 800; font-family: monospace;">#{{ p.id }}</td>
+                <td><input type="checkbox" class="product-checkbox" value="{{ p.id }}" onchange="updateSelectionBar()"></td>
+                <td>
+                    <div style="font-weight: 700; color: #fff; font-size: 0.9rem;">{{ p.brand or '-' }}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary);">{{ p.model or '-' }}</div>
+                </td>
+                <td id="cat-col-{{ p.id }}">
+                    <span class="badge" style="background: rgba(212,175,55,0.1); color: var(--accent-gold); border: 1px solid rgba(212,175,55,0.2); font-size: 0.65rem; padding: 4px 8px; border-radius: 6px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">
+                        {{ p.category or 'Non Definito' }}
+                    </span>
+                </td>
+                <td id="score-col-{{ p.id }}">
+                    <div id="score-content-{{ p.id }}">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 40px; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+                                <div style="width: {{ score }}%; height: 100%; background: {% if score > 80 %}#10b981{% elif score > 40 %}#f59e0b{% else %}#ef4444{% endif %};"></div>
+                            </div>
+                            <span style="font-size: 0.7rem; font-weight: 800; color: {% if score > 80 %}#10b981{% elif score > 40 %}#f59e0b{% else %}#ef4444{% endif %};">{{ score }}%</span>
+                        </div>
+                    </div>
+                </td>
+                <td id="seo-col-{{ p.id }}">
+                    <div id="seo-col-content-{{ p.id }}">
+                        {% if p.is_ai_processing %}
+                            <div class="loading-pulse-text" style="color: var(--accent-gold); font-size: 0.75rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                                <i class="ph-bold ph-spinner ph-spin"></i> GENERATING...
+                            </div>
+                        {% elif p.status.name == 'Error' %}
+                            <div style="color: #ef4444; font-size: 0.75rem; display: flex; align-items: center; gap: 6px;" title="{{ p.last_ai_error }}">
+                                <i class="ph-bold ph-warning-circle"></i> 
+                                <span style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.last_ai_error or 'Errore Arricchimento' }}</span>
+                            </div>
+                        {% elif p.seo_title %}
+                            <div style="font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <i class="ph-fill ph-check-circle" style="color: #10b981;"></i>
+                                <span style="font-weight: 700; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.seo_title }}</span>
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                                {{ p.ai_description_it or '-' }}
+                            </div>
+                        {% else %}
+                            <div style="display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.2);">
+                                <i class="ph ph-circle-dashed" style="font-size: 1rem;"></i>
+                                <span style="font-size: 0.75rem; font-weight: 600;">Da Arricchire</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                </td>
+                <td id="img-col-{{ p.id }}">
+                    {% if p.image_match_score and p.image_match_score > 0 %}
+                        <div class="asset-count-badge">
+                            <i class="ph-fill ph-image"></i> {{ p.image_match_score }} FOTO
+                        </div>
+                    {% else %}
+                        <span style="color: rgba(255,255,255,0.2); font-size: 0.7rem;">SCOOPING...</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right; padding-right: 24px;">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                        <button onclick="retryEnrichment({{ p.id }}, this)" class="btn glass-btn" style="width: 36px; height: 36px; padding: 0; justify-content: center; border: none; background: rgba(212,175,55,0.1); color: var(--accent-gold);">
+                            <i class="ph ph-sparkle"></i>
+                        </button>
+                        <button onclick="quickFix({{ p.id }}, '{{ (p.brand or '')|e }}', '{{ (p.model or '')|e }}')" class="btn glass-btn" style="width: 36px; height: 36px; padding: 0; justify-content: center; border: none;">
+                            <i class="ph ph-pencil-simple"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="page-section-header">
+    <i class="ph-duotone ph-terminal-window"></i> Sala Macchine: Real-Time Orchestration Logs
+</div>
+<div class="glass-panel" id="console-logs" style="background: rgba(0,0,0,0.4); height: 200px; overflow-y: auto; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #4ade80; border: 1px solid rgba(255,255,255,0.05); border-radius: 16px;">
+    <div style="color: #666; font-style: italic;">> Collegamento al kernel AI in corso...</div>
+</div>
+
+<!-- MODAL: BATCH SPOTLIGHT (5 PRODUCTS GATEWAY) -->
+<div id="batch-spotlight-modal" class="modal-overlay" style="display:none; z-index: 10002;">
+    <div class="modal-content glass-panel" style="max-width: 900px; padding: 32px; border-top: 4px solid #10b981; border-radius: 20px; position: relative;">
+        <button onclick="closeSpotlightModal()" style="position: absolute; top: 12px; right: 12px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #ef4444; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+            <i class="ph ph-x" style="font-size: 1.2rem;"></i>
+        </button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+                <div style="font-size: 0.6rem; font-weight: 800; color: #10b981; text-transform: uppercase; letter-spacing: 2px;">Revisione Qualità</div>
+                <h1 id="spotlight-title" style="font-size: 1.6rem; font-weight: 800; color: #fff; margin: 0; letter-spacing: -1px;">Revisione Prodotto <span style="color: #10b981;">(1 di 1)</span></h1>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Perfeziona le proposte AI o approva l'intera selezione in un colpo solo.</p>
+            </div>
+            <div style="display: flex; gap: 12px;" id="spotlight-header-actions">
+                <button onclick="applyBatch()" class="btn glass-btn" style="color: #fff; font-weight: 700; border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="ph ph-check-square-offset"></i> Certifica Tutto il Batch
+                </button>
+                <button onclick="approveAll()" class="btn attr-primary" style="background: var(--accent-gold); color: #000; box-shadow: 0 0 20px rgba(212,175,55,0.2); font-weight: 800;">
+                    <i class="ph-fill ph-checks"></i> Approva Senza Modifiche
+                </button>
+            </div>
+        </div>
         
-        pollInterval = setInterval(() => {
-            fetch("/api/harvester/logs")
-                .then(res => res.json())
-                .then(data => {
-                    let consoleBox = document.getElementById('harvester-console');
-                    if (data.logs && data.logs.length > 0) {
-                        consoleBox.innerHTML = "";
-                        data.logs.forEach(log => {
-                            let div = document.createElement("div");
-                            div.style.marginBottom = "6px";
-                            div.innerText = "> " + log;
-                            consoleBox.appendChild(div);
-                        });
-                        consoleBox.scrollTop = consoleBox.scrollHeight;
-                    }
-                });
-        }, 1000);
+        <div id="spotlight-loading" style="text-align:center; padding: 40px; color: var(--accent-gold);">
+             <i class="ph ph-spinner ph-spin" style="font-size: 2rem; margin-bottom: 12px;"></i>
+             <div>Sincronizzazione Revisione...</div>
+        </div>
+
+        <div id="spotlight-list" style="max-height: 400px; overflow-y: auto; margin-bottom: 24px;">
+            <!-- Prodotti popolati via JS -->
+        </div>
+    </div>
+</div>
+
+<audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+<!-- MODAL: ASSET COMMAND CENTER -->
+<div id="enrichment-modal" class="modal-overlay" style="display:none; z-index: 10001;">
+    <div class="modal-content glass-panel" style="max-width: 700px; padding: 32px; border-top: 4px solid var(--accent-gold);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div>
+                <h2 style="font-size: 1.4rem; font-weight: 800; color: #fff; margin: 0;">Asset Command Center</h2>
+                <p id="modal-subtitle" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;"></p>
+            </div>
+            <button onclick="closeEnrichmentMenu()" style="background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px;">
+            <button class="action-tile" onclick="triggerAction('seo')">
+                <i class="ph-duotone ph-magic-wand"></i>
+                <span>SEO Titling</span>
+            </button>
+            <button class="action-tile" onclick="triggerAction('desc')">
+                <i class="ph-duotone ph-text-align-left"></i>
+                <span>Narrativa</span>
+            </button>
+            <button class="action-tile" onclick="triggerAction('images')">
+                <i class="ph-duotone ph-image"></i>
+                <span>Asset Scan</span>
+            </button>
+            <button class="action-tile gold" onclick="triggerAction('all')">
+                <i class="ph-duotone ph-sparkle"></i>
+                <span>FULL AI</span>
+            </button>
+        </div>
+
+        <div id="preview-area" style="display: none;">
+            <div style="background: rgba(0,0,0,0.2); padding: 24px; border-radius: 16px; border: 1px solid var(--glass-border);">
+                <div style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); letter-spacing: 1px; margin-bottom: 16px;">ANTEPRIMA GENERATIVA</div>
+                <div id="preview-content" style="color: #fff; line-height: 1.6; font-size: 0.9rem;"></div>
+                <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; border-top: 1px solid var(--glass-border); pt: 16px;">
+                    <button class="btn glass-btn" onclick="hidePreview()">Scarta</button>
+                    <button class="btn attr-primary" onclick="savePreview()">Conferma Dati</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.harvester-row { transition: all 0.2s; }
+.harvester-row:hover { background: rgba(255,255,255,0.02); }
+.harvester-row.processing { background: rgba(212,175,55,0.03) !important; }
+
+.asset-count-badge { background: rgba(16,185,129,0.1); color: #10b981; padding: 4px 10px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; gap: 6px; width: fit-content; }
+
+.action-tile { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); padding: 20px 12px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; cursor: pointer; transition: all 0.2s; }
+.action-tile:hover { background: rgba(255,255,255,0.06); transform: translateY(-4px); border-color: rgba(255,255,255,0.1); }
+.action-tile i { font-size: 1.8rem; color: var(--text-secondary); }
+.action-tile span { font-size: 0.65rem; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; }
+.action-tile.gold { border-color: rgba(212,175,55,0.3); background: rgba(212,175,55,0.05); }
+.action-tile.gold i { color: var(--accent-gold); }
+
+#console-logs::-webkit-scrollbar { width: 6px; }
+#console-logs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+.blinking-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: #4ade80;
+    margin-left: 4px;
+    animation: blink 1s infinite;
+    vertical-align: middle;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; }
+</style>
+
+<script>
+    let currentId = null;
+    let currentPreview = null;
+    let isModalOpen = false;
+    let spotlightIndex = 0;
+    let spotlightProducts = [];
+
+    function quickFix(id, brand, model) {
+        currentId = id;
+        document.getElementById('modal-subtitle').innerText = `${brand} - ${model}`;
+        document.getElementById('enrichment-modal').style.display = 'flex';
+        hidePreview();
     }
+
+    function closeEnrichmentMenu() { document.getElementById('enrichment-modal').style.display = 'none'; }
+    function hidePreview() { document.getElementById('preview-area').style.display = 'none'; }
+
+    async function triggerAction(action) {
+        const area = document.getElementById('preview-area');
+        const content = document.getElementById('preview-content');
+        area.style.display = 'block';
+        content.innerHTML = '<div style="display:flex; align-items:center; gap:12px;"><i class="ph ph-spinner ph-spin"></i> AI Processing...</div>';
+        
+        try {
+            const res = await fetch('/api/harvester/preview', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ product_id: currentId, action: action })
+            });
+            const data = await res.json();
+            currentPreview = { ...data, action: action };
+            content.innerHTML = `
+                <div style="margin-bottom:12px;"><strong>Titolo SEO:</strong> ${data.seo_title || '-'}</div>
+                <div style="font-size:0.8rem; opacity:0.8;">${data.ai_description_it || 'Nessuna descrizione generata.'}</div>
+            `;
+        } catch(e) { content.innerHTML = '<span style="color:#ef4444;">Errore elaborazione AI.</span>'; }
+    }
+
+    async function savePreview() {
+        if(!currentId || !currentPreview) return;
+        try {
+            const res = await fetch('/api/harvester/confirm', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ product_id: currentId, ...currentPreview })
+            });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                showToast("Dati integrati.");
+                closeEnrichmentMenu();
+                const content = document.getElementById(`seo-col-content-${currentId}`);
+                if(content) {
+                    content.innerHTML = `
+                        <div style="font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px; animation: slideIn 0.5s ease;">
+                            <i class="ph-fill ph-check-circle" style="color: #10b981;"></i>
+                            <span style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${currentPreview.seo_title}</span>
+                        </div>
+                    `;
+                }
+            }
+        } catch(e) { showToast("Errore salvataggio."); }
+    }
+
+    async function retryEnrichment(pid, btn) {
+        const icon = btn.querySelector('i');
+        icon.className = 'ph ph-spinner ph-spin';
+        btn.disabled = true;
+        const row = document.getElementById(`row-${pid}`);
+        if(row) row.classList.add('processing');
+        const seoCol = document.getElementById(`seo-col-content-${pid}`);
+        if(seoCol) {
+            seoCol.innerHTML = '<div class="loading-pulse-text" style="color: var(--accent-gold); font-size: 0.75rem; font-weight: 800; display: flex; align-items: center; gap: 8px;"><i class="ph-bold ph-spinner ph-spin"></i> GENERATING...</div>';
+        }
+        try {
+            const res = await fetch(`/api/harvester/enrich_single/${pid}`, { method: 'POST' });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                const summary = data.summary || {};
+                showToast(`✨ Successo: ${summary.seo_title || 'Dati aggiornati'}`);
+                if(row) row.classList.remove('processing');
+                if(seoCol) {
+                    seoCol.innerHTML = `
+                        <div style="font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px; animation: slideIn 0.5s ease;">
+                            <i class="ph-fill ph-check-circle" style="color: #10b981;"></i>
+                            <span style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${summary.seo_title || 'Pronto'}</span>
+                        </div>
+                    `;
+                }
+            } else {
+                showToast(`⚠️ Errore: ${data.error || 'Fallito'}`);
+                if(row) row.classList.remove('processing');
+                if(seoCol) seoCol.innerHTML = `<span style="color: #ef4444; font-size: 0.75rem;">⚠️ Errore AI</span>`;
+            }
+        } catch(e) { 
+            showToast("Errore di connessione.");
+            if(row) row.classList.remove('processing');
+        }
+        finally { icon.className = 'ph ph-sparkle'; btn.disabled = false; }
+    }
+
+    function toggleAll(master) {
+        document.querySelectorAll('.product-checkbox').forEach(cb => cb.checked = master.checked);
+        updateSelectionBar();
+    }
+
+    function updateSelectionBar() {
+        const checked = document.querySelectorAll('.product-checkbox:checked').length;
+        const bar = document.getElementById('btn-harvest-selected');
+        const count = document.getElementById('selection-count');
+        if(checked > 0) {
+            if(bar) bar.style.display = 'flex';
+            if(count) {
+                count.style.display = 'block';
+                count.innerText = `${checked} SELEZIONATI`;
+            }
+        } else {
+            if(bar) bar.style.display = 'none';
+            if(count) count.style.display = 'none';
+        }
+    }
+
+    async function startHarvesting(mode) {
+        let ids = [];
+        if(mode === 'selected') {
+            ids = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => parseInt(cb.value));
+        }
+        showToast(`🚀 Avvio processo AI per ${ids.length || 'tutta la coda'}...`);
+        fetch('/api/harvester/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids, mode })
+        }).then(() => {
+            document.getElementById('active-engine-bar').style.display = 'flex';
+            document.getElementById('engine-current-task').innerText = "Inizializzazione engine...";
+        });
+    }
+
+    setInterval(async () => {
+        try {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+            const logBox = document.getElementById('console-logs');
+            if(data.logs.length && logBox) {
+                const decoratedLogs = data.logs.map(l => {
+                    let color = "#4ade80";
+                    if(l.includes("Error") || l.includes("❌")) color = "#ef4444";
+                    if(l.includes("AI:") || l.includes("🤖")) color = "var(--accent-gold)";
+                    return `<div style="color: ${color}">> ${l}</div>`;
+                }).join('');
+                logBox.innerHTML = decoratedLogs + '<div class="blinking-cursor">_</div>';
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+        } catch(e) {}
+    }, 1500);
+            
+    setInterval(() => {
+        if(!isModalOpen) {
+            refreshProcessingStates();
+        }
+    }, 2000);
+
+    async function refreshProcessingStates() {
+        try {
+            const res = await fetch('/api/harvester/batch-status');
+            if(!res.ok) return;
+            const data = await res.json();
+            const currentBatchIds = data.engine.current_batch_ids || [];
+            const engineStatus = data.engine.status;
+            const engineBar = document.getElementById('active-engine-bar');
+            const taskText = document.getElementById('engine-current-task');
+            const batchInfo = document.getElementById('engine-batch-info');
+            const progressContainer = document.getElementById('batch-progress-container');
+
+            if(engineStatus === 'RUNNING' || engineStatus === 'WAITING_FOR_CONFIRMATION') {
+                if(data.overall.total > 0) {
+                    if(batchInfo) batchInfo.innerText = `${data.overall.completed} / ${data.overall.total}`;
+                    const pct = (data.overall.completed / data.overall.total) * 100;
+                    const bar = document.getElementById('batch-progress-bar');
+                    if(bar) bar.style.width = `${pct}%`;
+                    if(progressContainer) progressContainer.style.display = 'block'; 
+                }
+            }
+
+            if(engineStatus === 'RUNNING') {
+                if(engineBar) engineBar.style.display = 'flex';
+                if(taskText) taskText.innerText = `Lavorazione in corso...`;
+            } else if(engineStatus === 'WAITING_FOR_CONFIRMATION') {
+                const spotlightModal = document.getElementById('batch-spotlight-modal');
+                if(spotlightModal && spotlightModal.style.display === 'none' && !isModalOpen) {
+                    showBatchSpotlight();
+                }
+                if(engineBar) engineBar.style.display = 'none';
+            } else if(engineStatus === 'IDLE' || engineStatus === 'FINISHED') {
+                if(engineBar) engineBar.style.display = 'none';
+                if(progressContainer) progressContainer.style.display = 'none';
+                const spotlightModal = document.getElementById('batch-spotlight-modal');
+                if(!spotlightModal || spotlightModal.style.display === 'none') {
+                    isModalOpen = false;
+                }
+            }
+
+            document.querySelectorAll('.harvester-row').forEach(row => {
+                const pid = parseInt(row.id.replace('row-', ''));
+                if(currentBatchIds.includes(pid)) {
+                    row.style.background = 'rgba(16,185,129,0.05)';
+                    row.style.borderLeft = '4px solid #10b981';
+                } else {
+                    row.style.background = '';
+                    row.style.borderLeft = '';
+                }
+            });
+        } catch(e) {}
+    }
+
+    async function showBatchSpotlight() {
+        if(isModalOpen) return; // Evita chiamate multiple
+        isModalOpen = true;
+        spotlightIndex = 0;
+        
+        const list = document.getElementById('spotlight-list');
+        const modal = document.getElementById('batch-spotlight-modal');
+        const loading = document.getElementById('spotlight-loading');
+        
+        if(modal) modal.style.display = 'flex';
+        document.getElementById('notif-sound').play().catch(() => {});
+        if(loading) loading.style.display = 'block';
+        if(list) list.innerHTML = '';
+
+        try {
+            const res = await fetch('/api/harvester/batch-details');
+            const data = await res.json();
+            spotlightProducts = data.products || [];
+            console.log("Spotlight Products Received:", spotlightProducts);
+            
+            if(loading) loading.style.display = 'none';
+
+            // AUTO-GUARIGIONE: Se non ci sono prodotti, chiudiamo e resettiamo
+            if(spotlightProducts.length === 0) {
+                if(modal) modal.style.display = 'none';
+                isModalOpen = false;
+                console.log("Spotlight vuoto, auto-chiusura in corso...");
+                return;
+            }
+            
+            updateSpotlightView();
+        } catch(e) {
+            console.error(e);
+            if(list) list.innerHTML = '<div style="color: #ef4444; padding: 20px;">Errore caricamento selezione.</div>';
+        }
+    }
+
+    function closeSpotlightModal() {
+        document.getElementById('batch-spotlight-modal').style.display = 'none';
+        // Non resettiamo isModalOpen immediatamente per evitare che l'intervallo lo riapra subito
+        // Lo resettiamo solo se l'utente cambia pagina o se il batch finisce davvero
+        setTimeout(() => { isModalOpen = false; }, 30000); // 30 secondi di "silenzio"
+    }
+
+    function updateSpotlightView() {
+        const list = document.getElementById('spotlight-list');
+        if(!list) return;
+        list.innerHTML = '';
+        if (spotlightProducts.length === 0) {
+            list.innerHTML = '<div style="color: #fff; padding: 20px; text-align:center;">Nessun prodotto.</div>';
+            return;
+        }
+        const count = spotlightProducts.length;
+        const p = spotlightProducts[spotlightIndex];
+        const pre = p.preliminary || {};
+        const cur = p.current || {};
+        const title = document.getElementById('spotlight-title');
+        if(title) title.innerHTML = `Revisione Prodotto <span style="color: var(--accent-gold);">${spotlightIndex + 1} di ${count}</span>`;
+        const div = document.createElement('div');
+        div.className = 'glass-panel spotlight-item';
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px;">
+                <div>
+                    <div style="font-size: 0.65rem; color: var(--accent-gold); font-weight: 800; letter-spacing: 2px; margin-bottom: 6px;">ARTICOLO</div>
+                    <div style="font-weight: 800; color: #fff; font-size: 1.4rem;">${p.brand} ${p.model}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="color: #fff; font-family: monospace; font-weight: 700; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">#${p.id}</div>
+                </div>
+            </div>
+            <div class="comparison-grid" style="display: grid; grid-template-columns: 120px 1fr 1.2fr 60px; gap: 20px; align-items: center;">
+                ${renderCompRow('Titolo SEO', 'seo_title', cur.seo_title, pre.seo_title)}
+                ${renderCompRow('Materiale', 'material', cur.material, pre.material)}
+                ${renderCompRow('Dimensioni', 'dimensions', cur.dimensions, pre.dimensions)}
+                ${renderCompRow('Tags', 'tags', cur.tags, (pre.tags && Array.isArray(pre.tags)) ? pre.tags.join(', ') : pre.tags)}
+                ${renderCompRow('Descrizione', 'ai_description_it', cur.ai_description_it, pre.ai_description_it, true, true, p.id)}
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 40px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.05);">
+                <button onclick="changeSpotlight(-1)" class="btn glass-btn" ${spotlightIndex === 0 ? 'disabled style="opacity:0.2;"' : ''}>
+                    <i class="ph ph-arrow-left"></i> Precedente
+                </button>
+                <div style="display: flex; gap: 12px;">
+                    ${count === 1 ? `
+                        <button onclick="applyBatch()" class="btn attr-primary" style="background: #10b981; color: #fff; font-weight: 800; border: none; padding: 12px 24px; border-radius: 10px;">
+                            <i class="ph-fill ph-check-circle"></i> Certifica Prodotto
+                        </button>
+                    ` : (spotlightIndex < count - 1 ? `
+                        <button onclick="changeSpotlight(1)" class="btn attr-primary" style="background: var(--accent-gold); color: #000; font-weight: 800; border: none; padding: 12px 24px; border-radius: 10px;">
+                            Certifica e Passa al Successivo <i class="ph ph-arrow-right"></i>
+                        </button>
+                    ` : `
+                        <button onclick="applyBatch()" class="btn attr-primary" style="background: #10b981; color: #fff; font-weight: 800; border: none; padding: 12px 24px; border-radius: 10px;">
+                            <i class="ph-fill ph-check-double"></i> Certifica & Chiudi Batch
+                        </button>
+                    `)}
+                </div>
+            </div>
+        `;
+        list.appendChild(div);
+    }
+
+    function changeSpotlight(delta) {
+        const activeItem = document.querySelector('.spotlight-item');
+        if (activeItem) {
+            const p = spotlightProducts[spotlightIndex];
+            if (!p.edits) p.edits = {};
+            if (!p.choices) p.choices = {};
+            activeItem.querySelectorAll('.ai-edit-input').forEach(i => p.edits[i.getAttribute('data-field')] = i.value);
+            activeItem.querySelectorAll('.field-choice').forEach(c => p.choices[c.getAttribute('data-field')] = c.checked);
+        }
+        spotlightIndex += delta;
+        updateSpotlightView();
+        const pNew = spotlightProducts[spotlightIndex];
+        if (pNew && pNew.edits) {
+            setTimeout(() => {
+                const newItem = document.querySelector('.spotlight-item');
+                Object.keys(pNew.edits).forEach(f => {
+                    const inp = newItem.querySelector(`.ai-edit-input[data-field="${f}"]`);
+                    if (inp) inp.value = pNew.edits[f];
+                });
+                Object.keys(pNew.choices).forEach(f => {
+                    const cb = newItem.querySelector(`.field-choice[data-field="${f}"]`);
+                    if (cb) cb.checked = pNew.choices[f];
+                });
+            }, 50);
+        }
+    }
+
+    function renderCompRow(label, key, current, ai, isTextarea = false, showRegen = false, pid = null) {
+        const hasCurrent = current && current.toString().trim() !== '' && current !== 'null';
+        const isDifferent = ai && ai.toString().trim() !== current.toString().trim() && ai !== 'null';
+        
+        // Se il dato attuale esiste già ed è diverso dall'AI, NON spuntiamo la casella di default (rispettiamo il Master)
+        // Se invece il dato attuale è vuoto, allora spuntiamo l'AI come proposta di riempimento.
+        const checked = (isDifferent && !hasCurrent) ? 'checked' : '';
+        
+        const aiValue = (ai && ai !== 'null') ? ai : '';
+        const currentDisplay = current ? current : '<span style="opacity:0.3; font-style:italic;">Vuoto</span>';
+        
+        // Se è una textarea e ha il regen, creiamo un contenitore relativo per posizionare la scintilla a sinistra
+        let widget = '';
+        if(isTextarea) {
+            widget = `
+                <div style="position:relative;">
+                    ${showRegen ? `<i class="ph ph-sparkle" onclick="regenField(${pid}, '${key}')" style="position:absolute; left:-28px; top:10px; cursor:pointer; color:var(--accent-gold); font-size:1.1rem; z-index:10;" title="Rigenera ora"></i>` : ''}
+                    <textarea id="input-${key}-${pid}" class="ai-edit-input" data-field="${key}" style="width:100%; background:rgba(212,175,55,0.05); border:1px solid rgba(212,175,55,0.1); color:#fff; font-size:0.75rem; border-radius:8px; padding:10px; min-height:80px;">${aiValue}</textarea>
+                </div>`;
+        } else {
+            widget = `<input type="text" id="input-${key}-${pid}" class="ai-edit-input" data-field="${key}" value="${aiValue}" style="width:100%; background:rgba(212,175,55,0.05); border:1px solid rgba(212,175,55,0.1); color:#fff; font-size:0.75rem; border-radius:8px; padding:6px 10px;">`;
+        }
+        
+        return `
+            <div style="font-weight:800; font-size:0.7rem; color:rgba(255,255,255,0.5); display:flex; align-items:center;">${label.toUpperCase()}</div>
+            <div style="color:rgba(255,255,255,0.4); font-size:0.75rem; overflow:hidden; text-overflow:ellipsis;">${currentDisplay}</div>
+            <div>${widget}</div>
+            <div style="text-align:center;"><input type="checkbox" class="field-choice" data-field="${key}" ${checked} style="width:18px; height:18px;"></div>
+        `;
+    }
+
+    async function regenField(pid, field) {
+        const input = document.getElementById(`input-${field}-${pid}`);
+        if(!input) return;
+        const originalText = input.value;
+        input.value = "Generazione in corso...";
+        input.style.opacity = "0.5";
+        
+        try {
+            const res = await fetch('/api/harvester/preview', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ product_id: pid, action: field === 'ai_description_it' ? 'desc' : field })
+            });
+            const data = await res.json();
+            if(data[field]) {
+                input.value = data[field];
+                showToast("✨ Descrizione rigenerata!");
+            } else {
+                input.value = originalText;
+                showToast("⚠️ Errore AI");
+            }
+        } catch(e) {
+            input.value = originalText;
+            showToast("Errore di rete");
+        } finally {
+            input.style.opacity = "1";
+        }
+    }
+
+    async function applyBatch() {
+        changeSpotlight(0); 
+        const finalChoices = {};
+        const finalEdits = {};
+        spotlightProducts.forEach(p => {
+            finalChoices[p.id] = p.choices || {};
+            finalEdits[p.id] = p.edits || {};
+        });
+        try {
+            const res = await fetch('/api/harvester/batch-apply', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ choices: finalChoices, edited_values: finalEdits })
+            });
+            const data = await res.json();
+            if(data.status === 'ok') {
+                document.getElementById('batch-spotlight-modal').style.display = 'none';
+                isModalOpen = false;
+                showToast("✨ Certificazione completata!");
+                location.reload();
+            }
+        } catch(e) { showToast("Errore salvataggio."); }
+    }
+
+    async function approveAll() {
+        if(!confirm("Confermi di voler approvare tutte le proposte AI per l'intera selezione?")) return;
+        
+        spotlightProducts.forEach(p => {
+            if(!p.choices) p.choices = {};
+            // Approviamo tutti i campi chiave
+            ['seo_title', 'material', 'dimensions', 'tags', 'ai_description_it'].forEach(field => {
+                p.choices[field] = true;
+            });
+        });
+        
+        await applyBatch();
+    }
+
+    window.sortTable = function(attr, isAutoInit = false) {
+        const tbody = document.querySelector('.inventory-table tbody');
+        if(!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('.harvester-row'));
+        if(!isAutoInit) {
+            if(window.currentSort.attr === attr) {
+                window.currentSort.order = window.currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                window.currentSort.attr = attr;
+                window.currentSort.order = 'asc';
+            }
+            localStorage.setItem('harvester_sort', JSON.stringify(window.currentSort));
+        }
+        const sortedRows = rows.sort((a, b) => {
+            let valA = a.getAttribute(`data-${attr}`) || '';
+            let valB = b.getAttribute(`data-${attr}`) || '';
+            if(attr === 'id' || attr === 'score') {
+                valA = parseFloat(valA) || 0;
+                valB = parseFloat(valB) || 0;
+            } else {
+                valA = valA.toLowerCase();
+                valB = valB.toLowerCase();
+            }
+            if (valA < valB) return window.currentSort.order === 'asc' ? -1 : 1;
+            if (valA > valB) return window.currentSort.order === 'asc' ? 1 : -1;
+            return 0;
+        });
+        tbody.innerHTML = '';
+        sortedRows.forEach(row => tbody.appendChild(row));
+    };
+
+    window.onload = () => {
+        refreshProcessingStates();
+        const savedSort = localStorage.getItem('harvester_sort');
+        if(savedSort) {
+            try {
+                window.currentSort = JSON.parse(savedSort);
+                setTimeout(() => window.sortTable(window.currentSort.attr, true), 150);
+            } catch(e) {}
+        }
+        const searchInput = document.getElementById('global-search');
+        if(searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                const term = e.target.value.toLowerCase().trim();
+                document.querySelectorAll('.harvester-row').forEach(row => {
+                    const searchable = row.getAttribute('data-search').toLowerCase();
+                    row.style.display = searchable.includes(term) ? '' : 'none';
+                });
+            });
+        }
+    };
+
+    window.currentSort = { attr: 'id', order: 'asc' };
 </script>
+
+{% include 'components/product_editor.html' %}
 {% endblock %}

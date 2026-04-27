@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">The Harvester <span style="font-size:1.2rem; color:var(--text-secondary);">(AI Enrichment & Image Matching)</span></div>
+
+<div class="glass-panel" style="margin-bottom: 24px; padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="max-width: 600px;">
+            <h2 style="font-weight: 600; font-size: 1.1rem; margin-bottom: 8px;">Pipeline di Arricchimento Digitale</h2>
+            <p style="color: var(--text-secondary); font-size: 0.85rem;">Gestisci la coda di asset per identificare modelli, generare nomi SEO e associare immagini dal cloud.</p>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;" id="batch-actions-area">
+            <span id="selection-count" style="font-size: 0.8rem; color: var(--text-secondary); display: none; margin-right: 8px;"></span>
+            <button onclick="startHarvesting('selected')" id="btn-harvest-selected" class="btn glass-btn attr-primary" style="display: none;">
+                <i class="ph ph-selection-plus"></i> Arricchisci Selezione
+            </button>
+            <button onclick="startHarvesting('all')" id="btn-harvest-all" class="btn glass-btn">
+                <i class="ph ph-arrows-merge"></i> Arricchisci Tutta la Coda
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="section-head" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+    <span><i class="ph ph-list-checks"></i> CODA DI LAVORAZIONE GRANULARE ({{ products|length }})</span>
+</div>
+
+<div class="glass-panel" style="overflow-x: auto; padding: 0; margin-bottom: 24px;">
+    <table class="inventory-table" style="min-width: 1200px;" id="harvester-table">
+        <thead>
+            <tr>
+                <th style="width: 40px; padding-left:20px;">
+                    <input type="checkbox" id="select-all-checkbox" onclick="toggleAllCheckboxes(this)">
+                </th>
+                <th style="width: 250px;">Prodotto Sorgente</th>
+                <th>Identità SEO</th>
+                <th style="width: 180px;">Dati Tecnici</th>
+                <th style="width: 220px;">Smart Tags & Meta</th>
+                <th>Asset</th>
+                <th style="text-align: right; padding-right: 20px;">Azione</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr id="row-{{ p.id }}" class="{% if p.is_ai_processing %}row-processing{% endif %} product-row">
+                <td style="padding-left:20px;">
+                    <input type="checkbox" class="product-checkbox" value="{{ p.id }}" onchange="updateSelectionBar()">
+                </td>
+                <td style="position: relative;">
+                    {% if p.is_ai_processing %}
+                        <div class="processing-overlay"><i class="ph ph-spinner-gap ph-spin"></i> AI Analysing...</div>
+                    {% endif %}
+                    <div style="font-weight: 700; font-size: 0.85rem; text-transform: capitalize;">{{ p.brand.lower() if p.brand else '-' }}</div>
+                    <div style="font-size: 0.75rem; color: #888; text-transform: capitalize;">{{ p.model.lower() if p.model else '-' }}</div>
+                </td>
+                <td id="seo-col-{{ p.id }}">
+                    {% if p.seo_title %}
+                        <div class="seo-badge" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <i class="ph ph-check"></i> {{ p.seo_title }}
+                        </div>
+                    {% elif p.last_ai_error %}
+                        <div class="error-badge" title="{{ p.last_ai_error }}">
+                            <i class="ph ph-warning-octagon"></i> Errore <span class="tooltip-hint">?</span>
+                        </div>
+                    {% else %}
+                        <span class="status-placeholder">In attesa...</span>
+                    {% endif %}
+                </td>
+                <td id="tech-col-{{ p.id }}">
+                    <div style="font-size: 0.7rem; color: #666; display: flex; flex-direction: column; gap: 2px;">
+                        <span><strong style="color: #000;">MAT:</strong> {{ p.material or '-' }}</span>
+                        <span><strong style="color: #000;">DIM:</strong> {{ p.dimensions or '-' }}</span>
+                    </div>
+                </td>
+                <td id="tags-col-{{ p.id }}">
+                    {% if p.tags %}
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px; max-width: 200px;">
+                            {% set tag_list = p.tags.split(',') %}
+                            {% for tag in tag_list[:3] %}
+                                <span class="tag-badge">{{ tag|trim }}</span>
+                            {% endfor %}
+                            {% if tag_list|length > 3 %}
+                                <span class="tag-badge" style="background:var(--accent-black); color:white;">+{{ tag_list|length - 3 }}</span>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <span class="status-placeholder">Nessun tag</span>
+                    {% endif %}
+                </td>
+                <td id="img-col-{{ p.id }}">
+                    {% if p.image_match_score and p.image_match_score > 0 %}
+                        <span style="font-size:0.7rem; font-weight:700; color:#2E7D32;">{{ (p.image_match_score)|int }} Foto</span>
+                    {% else %}
+                        <span style="font-size:0.7rem; color:#bbb;">Nessuna</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: right; padding-right: 16px;">
+                    <button onclick="retryEnrichment({{ p.id }}, this)" class="btn glass-btn attr-primary" style="font-size:0.65rem; padding: 6px 12px;">
+                        <i class="ph ph-sparkle"></i> AI
+                    </button>
+                    <button onclick="openEnrichmentMenu({{ p.id }}, '{{ p.brand|escape }}', '{{ p.model|escape }}')" class="btn glass-btn" style="font-size:0.65rem; padding: 6px 8px;">
+                        <i class="ph ph-pencil"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Toast Notifications Container -->
+<div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 10px;"></div>
+
+<div class="section-head">
+    <span><i class="ph ph-terminal-window"></i> CONSOLE SALA MACCHINE (LIVE LOGS)</span>
+</div>
+<div class="glass-panel" id="console-logs" style="background: #111; color: #00ff00; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; height: 150px; overflow-y: auto; padding: 15px; line-height: 1.5; border-radius: 12px; border: 1px solid #333;">
+    <div style="color: #555;">Inizializzazione stream log...</div>
+</div>
+
+<!-- MODAL: ASSET COMMAND CENTER -->
+<div id="enrichment-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content enrichment-console">
+        <div class="modal-header">
+            <div>
+                <h3 id="modal-title">Asset Command Center</h3>
+                <p id="modal-subtitle" style="font-size:0.8rem; color:var(--text-secondary);"></p>
+            </div>
+            <button onclick="closeEnrichmentMenu()" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="console-body">
+            <div class="action-grid" style="grid-template-columns: repeat(5, 1fr);">
+                <button class="action-card" onclick="triggerAction('seo')">
+                    <i class="ph ph-magic-wand"></i>
+                    <span>Nome SEO</span>
+                </button>
+                <button class="action-card" onclick="triggerAction('desc')">
+                    <i class="ph ph-text-align-left"></i>
+                    <span>Descrizione</span>
+                </button>
+                <button class="action-card" onclick="triggerAction('tags')">
+                    <i class="ph ph-hash"></i>
+                    <span>Metatag</span>
+                </button>
+                <button class="action-card" onclick="triggerAction('images')">
+                    <i class="ph ph-image"></i>
+                    <span>Asset</span>
+                </button>
+                <button class="action-card primary" onclick="triggerAction('all')">
+                    <i class="ph ph-sparkle"></i>
+                    <span>Tutti</span>
+                </button>
+            </div>
+
+            <div id="preview-area" class="preview-dashboard" style="display:none;">
+                <div class="preview-header">Anteprima Integrazione</div>
+                <div id="preview-content" class="preview-data">
+                    <div class="loader-placeholder"><i class="ph ph-spinner-gap ph-spin"></i> Elaborazione AI...</div>
+                </div>
+                <div class="preview-actions" style="display:none;" id="preview-footer">
+                    <button class="btn glass-btn" onclick="savePreview()">Conferma e Salva</button>
+                    <button class="btn glass-btn" onclick="hidePreview()" style="color:var(--accent-red);">Scarta</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.toast { background: white; border: 1px solid var(--glass-border); padding: 16px 24px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); color: var(--accent-black); font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; min-width: 300px; animation: slideIn 0.4s cubic-bezier(0, 1.2, 0.5, 1); transition: all 0.5s ease; position: relative; overflow: hidden; backdrop-filter: blur(10px); }
+.toast-success { border-left: 4px solid #4CAF50; }
+.toast-error { border-left: 4px solid #F44336; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.tag-badge { background: #f5f5f5; border: 1px solid #e0e0e0; color: #616161; padding: 2px 8px; border-radius: 4px; font-size: 0.6rem; font-weight: 600; white-space: nowrap; }
+.processing-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; z-index: 10; font-size: 0.7rem; font-weight: 700; color: var(--accent-black); backdrop-filter: blur(2px); border-radius: 8px; }
+.error-badge { background: #FFF5F5; color: #E53E3E; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; border: 1px solid #FED7D7; cursor: help; display: flex; align-items: center; gap: 5px; }
+.tooltip-hint { background: #E53E3E; color: white; border-radius: 50%; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.enrichment-console { width: 90%; max-width: 650px; background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid var(--glass-border); padding: 32px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.modal-header h3 { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.close-btn { background: none; border: none; font-size: 2rem; cursor: pointer; color: #888; }
+
+.action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+.action-card { background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 16px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; }
+.action-card i { font-size: 1.5rem; color: #555; }
+.action-card span { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #666; }
+.action-card:hover { transform: translateY(-3px); border-color: var(--accent-black); background: white; }
+.action-card.primary { background: var(--accent-black); border-color: var(--accent-black); }
+.action-card.primary i, .action-card.primary span { color: white; }
+
+.preview-dashboard { background: #fcfcfc; border: 1px solid #eee; border-radius: 12px; padding: 20px; animation: fadeIn 0.3s ease; }
+.preview-header { font-size: 0.65rem; text-transform: uppercase; font-weight: 700; color: #999; margin-bottom: 12px; letter-spacing: 0.05rem; }
+.preview-data { font-size: 0.9rem; color: #333; min-height: 100px; display: flex; align-items: center; justify-content: center; }
+.preview-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #eee; }
+
+.image-indicator { font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px; }
+.image-indicator.ready { background: #E8F5E9; color: #2E7D32; }
+.image-indicator.empty { background: #FFEBEE; color: #C62828; }
+.seo-badge { background: #f0f7ff; color: #007AFF; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; border: 1px solid #d0e7ff; width: fit-content; }
+.status-placeholder { color: #ccc; font-style: italic; font-size: 0.75rem; }
+
+.row-processing { background-color: rgba(0, 122, 255, 0.02); }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+
+<script>
+let currentProductId = null;
+let currentPreviewData = null;
+
+function openEnrichmentMenu(pid, brand, model) {
+    currentProductId = pid;
+    document.getElementById('modal-subtitle').innerText = `${brand} - ${model}`;
+    document.getElementById('enrichment-modal').style.display = 'flex';
+    hidePreview();
+}
+
+function closeEnrichmentMenu() {
+    document.getElementById('enrichment-modal').style.display = 'none';
+}
+
+function hidePreview() {
+    document.getElementById('preview-area').style.display = 'none';
+}
+
+async function triggerAction(type) {
+    const previewArea = document.getElementById('preview-area');
+    const previewContent = document.getElementById('preview-content');
+    const previewFooter = document.getElementById('preview-footer');
+    
+    previewArea.style.display = 'block';
+    previewFooter.style.display = 'none';
+    previewContent.innerHTML = '<div class="loader-placeholder"><i class="ph ph-spinner-gap ph-spin"></i> Elaborazione AI...</div>';
+    
+    try {
+        const res = await fetch(`/api/harvester/preview`, { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ product_id: currentProductId, action: type })
+        });
+        const data = await res.json();
+        
+        currentPreviewData = { ...data, type: type };
+        renderPreview(type, data);
+        previewFooter.style.display = 'flex';
+    } catch(e) {
+        previewContent.innerHTML = '<div style="color:var(--accent-red);">Errore durante l\'elaborazione.</div>';
+    }
+}
+
+function renderPreview(type, data) {
+    const container = document.getElementById('preview-content');
+    let html = '';
+    
+    if (type === 'seo' || type === 'all') {
+        html += `<div style="margin-bottom:16px;">
+                    <strong>Titolo SEO Suggerito:</strong><br>
+                    <input type="text" id="edit-seo-title" class="glass-input" value="${data.seo_title || ''}" style="width:100%; margin-top:8px;">
+                </div>`;
+    }
+    
+    if (type === 'desc' || type === 'all') {
+        html += `<div style="margin-bottom:16px;">
+                    <strong>Descrizione Narrativa (AI):</strong><br>
+                    <textarea id="edit-ai-desc" class="glass-input" style="width:100%; height:120px; margin-top:8px; font-size:0.85rem;">${data.ai_description_it || ''}</textarea>
+                </div>`;
+    }
+    
+    if (type === 'tags' || type === 'all') {
+        html += `<div style="margin-bottom:16px;">
+                    <strong>Tag Tecnici Estratti:</strong><br>
+                    <input type="text" id="edit-tags" class="glass-input" value="${data.tags || ''}" style="width:100%; margin-top:8px;" placeholder="Tag separati da virgola">
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+                        ${(data.tags || '').split(',').map(t => t.trim() ? `<span class="badge" style="background:#eee; color:#555;">${t}</span>` : '').join('')}
+                    </div>
+                </div>`;
+    }
+    
+    if (type === 'images' || type === 'all') {
+        html += `<div>
+                    <strong>Asset trovati nel Cloud:</strong><br>
+                    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; margin-top:10px;">
+                        ${(data.images || []).slice(0,5).map(img => `<img src="${img.thumb || img.url}" style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; border:1px solid #ddd;">`).join('')}
+                        ${data.images && data.images.length > 5 ? `<div style="display:flex; align-items:center; justify-content:center; background:#eee; border-radius:6px; font-size:0.7rem;">+${data.images.length - 5}</div>` : ''}
+                    </div>
+                </div>`;
+    }
+    
+    if (!html) html = "Dati processati con successo.";
+    container.innerHTML = `<div style="width:100%;">${html}</div>`;
+}
+
+async function savePreview() {
+    if (!currentProductId) return;
+    
+    // Recupero dati dai campi di testo se esistono
+    const editSeo = document.getElementById('edit-seo-title');
+    const editDesc = document.getElementById('edit-ai-desc');
+    const editTags = document.getElementById('edit-tags');
+
+    if (editSeo) currentPreviewData.seo_title = editSeo.value;
+    if (editDesc) currentPreviewData.ai_description_it = editDesc.value;
+    if (editTags) currentPreviewData.tags = editTags.value;
+    
+    try {
+        const res = await fetch(`/api/harvester/confirm`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ product_id: currentProductId, ...currentPreviewData })
+        });
+        const result = await res.json();
+        if (result.status === 'ok') {
+            location.reload();
+        } else {
+            alert("Errore salvataggio: " + (result.error || 'fallito'));
+        }
+    } catch(e) {
+        alert("Errore salvataggio server.");
+    }
+}
+
+async function retryEnrichment(pid, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner-gap ph-spin"></i> Avvio...';
+    try {
+        const res = await fetch(`/api/harvester/enrich_single/${pid}`, { method: 'POST' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            alert("Errore durante il lancio.");
+            btn.disabled = false;
+        }
+    } catch(e) {
+        alert("Errore di rete.");
+        btn.disabled = false;
+    }
+}
+
+// Selezione Multipla
+function toggleAllCheckboxes(master) {
+    const checkboxes = document.querySelectorAll('.product-checkbox');
+    checkboxes.forEach(cb => cb.checked = master.checked);
+    updateSelectionBar();
+}
+
+function updateSelectionBar() {
+    const checked = document.querySelectorAll('.product-checkbox:checked');
+    const countSpan = document.getElementById('selection-count');
+    const btnSelected = document.getElementById('btn-harvest-selected');
+    const btnAll = document.getElementById('btn-harvest-all');
+    
+    if (checked.length > 0) {
+        countSpan.style.display = 'inline';
+        countSpan.innerText = `${checked.length} selezionati`;
+        btnSelected.style.display = 'inline-block';
+    } else {
+        countSpan.style.display = 'none';
+        btnSelected.style.display = 'none';
+    }
+}
+
+// Sistema Toast Notifications
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;">
+            <i class="ph ${type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}" style="font-size:1.2rem;"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    container.appendChild(toast);
+    
+    // Auto-remove
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(20px)';
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
+
+// Polling automatico per i Log della Console
+async function pollLogs() {
+    try {
+        const res = await fetch('/api/logs');
+        const data = await res.json();
+        const consoleDiv = document.getElementById('console-logs');
+        if (data.logs && data.logs.length > 0) {
+            consoleDiv.innerHTML = data.logs.map(log => `<div>> ${log}</div>`).join('');
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+    } catch(e) {
+        console.error("Errore polling log:", e);
+    }
+}
+
+setInterval(pollLogs, 3000); 
+pollLogs(); 
+
+// Polling automatico se ci sono processi in corso
+setInterval(() => {
+    const processingRows = document.querySelectorAll('.row-processing');
+    if (processingRows.length > 0) {
+        // Salviamo lo stato di "lavorazione in corso" per mostrare la notifica finale al termine
+        sessionStorage.setItem('was_processing', 'true');
+        location.reload();
+    } else if (sessionStorage.getItem('was_processing') === 'true') {
+        sessionStorage.removeItem('was_processing');
+        showToast("Integrazione completata con successo!", "success");
+    }
+}, 10000); 
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Se la pagina è appena stata caricata e non ci sono più righe "processing" 
+    // ma prima c'erano, mandiamo il toast.
+    const processingRows = document.querySelectorAll('.row-processing');
+    if (processingRows.length === 0 && sessionStorage.getItem('was_processing') === 'true') {
+        sessionStorage.removeItem('was_processing');
+        showToast("✨ Tutti i task batch sono stati integrati!", "success");
+    }
+});
+
+// Azioni Massive Raffinate
+async function startHarvesting(mode) {
+    let ids = [];
+    if (mode === 'selected') {
+        const checked = document.querySelectorAll('.product-checkbox:checked');
+        ids = Array.from(checked).map(cb => parseInt(cb.value));
+    }
+    
+    const btn = mode === 'selected' ? document.getElementById('btn-harvest-selected') : document.getElementById('btn-harvest-all');
+    const originalText = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner-gap ph-spin"></i> In coda...';
+    
+    try {
+        const res = await fetch('/api/harvester/start', { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids: ids, mode: mode })
+        });
+        const data = await res.json();
+        if (data.status === 'started') {
+            showToast(`Avviato arricchimento per ${ids.length || 'tutti'} prodotti.`, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast("Errore durante l'avvio.", "error");
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    } catch(e) {
+        showToast("Errore di connessione.", "error");
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+</script>
+{% endblock %}

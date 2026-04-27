@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">Development Lab <span style="font-size:0.8rem; color:var(--text-secondary); margin-left:10px;">(Conversion Engine)</span></div>
+
+<div style="max-width: 800px; margin: 0 auto;">
+    <div class="glass-panel" style="padding: 30px; text-align: center; margin-bottom: 30px;">
+        <i class="ph ph-magic-wand" style="font-size: 3rem; color: var(--accent-gold); margin-bottom: 20px; display: block;"></i>
+        <h2 style="font-size: 1.5rem; margin-bottom: 10px;">Sviluppo Asset Digitali</h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;">
+            Stai per convertire i file HEIC/PNG selezionati in JPG ottimizzati per il web.
+        </p>
+        
+        <div id="conversion-status" style="display: none; margin-bottom: 25px;">
+            <div style="background: rgba(255,255,255,0.05); height: 10px; border-radius: 5px; overflow: hidden; margin-bottom: 10px; border: 1px solid var(--glass-border);">
+                <div id="progress-bar" style="width: 0%; height: 100%; background: var(--accent-gold); transition: width 0.3s ease;"></div>
+            </div>
+            <div id="status-text" style="font-size: 0.7rem; color: var(--accent-gold); font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Inizializzazione...</div>
+        </div>
+
+        <button id="start-btn" onclick="startConversion()" class="btn attr-primary" style="padding: 15px 40px; font-weight: 900; font-size: 0.8rem;">
+            AVVIA SVILUPPO BATCH
+        </button>
+        
+        <div id="success-actions" style="display: none; gap: 15px; justify-content: center; margin-top: 20px;">
+            <button onclick="window.location.href='/the-darkroom'" class="btn glass-btn">TORNA AL BROWSER</button>
+            <button id="next-matching-btn" class="btn attr-primary">VAI AL MATCHING <i class="ph ph-arrow-right"></i></button>
+        </div>
+    </div>
+
+    <div class="glass-panel" style="padding: 20px;">
+        <div style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">Asset in Coda</div>
+        <div id="queue-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Populated via JS -->
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/darkroom_core.js"></script>
+<script>
+    const fileIds = "{{ file_ids }}".split(',').filter(id => id.length > 0);
+    let queueImages = [];
+
+    async function init() {
+        await DarkroomCore.syncDrive();
+        
+        if (fileIds.length > 0) {
+            // Modalità Selezione: Usiamo solo gli ID passati
+            queueImages = DarkroomCore.allImages.filter(img => fileIds.includes(img.id));
+        } else {
+            // Modalità Workstation: Carichiamo tutti i RAW pendenti
+            const jpgNames = new Set(
+                DarkroomCore.allImages
+                    .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
+                    .map(img => img.name.split('.')[0].toLowerCase())
+            );
+            
+            queueImages = DarkroomCore.allImages.filter(img => {
+                const name = (img.name || "").toLowerCase();
+                const isRaw = name.endsWith('.heic') || (img.mimeType || "").includes('heif') || name.endsWith('.png');
+                const nameWithoutExt = name.split('.')[0];
+                return isRaw && !jpgNames.has(nameWithoutExt) && !img.associated;
+            });
+        }
+        
+        renderQueue();
+    }
+
+    function renderQueue() {
+        const list = document.getElementById('queue-list');
+        list.innerHTML = '';
+        
+        queueImages.forEach(img => {
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex; align-items:center; gap:15px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.05);';
+            item.innerHTML = `
+                <img src="/api/drive/proxy/${img.id}" style="width:50px; height:50px; object-fit:cover; border-radius:4px;">
+                <div style="flex-grow:1;">
+                    <div style="font-size:0.75rem; font-weight:700; color:#fff;">${img.name}</div>
+                    <div style="font-size:0.6rem; color:var(--text-secondary);">${(img.size / 1024 / 1024).toFixed(2)} MB</div>
+                </div>
+                <div id="status-${img.id}" style="font-size:0.6rem; font-weight:900; color:var(--text-secondary);">IN ATTESA</div>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    async function startConversion() {
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('conversion-status').style.display = 'block';
+        
+        const bar = document.getElementById('progress-bar');
+        const status = document.getElementById('status-text');
+        
+        let convertedCount = 0;
+        let convertedIds = [];
+
+        for (let i = 0; i < queueImages.length; i++) {
+            const img = queueImages[i];
+            const statusEl = document.getElementById(`status-${img.id}`);
+            
+            status.innerText = `Sviluppo: ${img.name}...`;
+            statusEl.innerText = 'ELABORAZIONE...';
+            statusEl.style.color = 'var(--accent-gold)';
+
+            try {
+                const res = await fetch(`/api/darkroom/convert-image?file_id=${img.id}`, { method: 'POST' });
+                const result = await res.json();
+                
+                if (result.status === 'ok') {
+                    statusEl.innerText = 'COMPLETATO';
+                    statusEl.style.color = '#10b981';
+                    convertedCount++;
+                    if (result.new_file_id) convertedIds.push(result.new_file_id);
+                } else {
+                    statusEl.innerText = 'ERRORE';
+                    statusEl.style.color = '#ef4444';
+                }
+            } catch (err) {
+                statusEl.innerText = 'ERRORE';
+                statusEl.style.color = '#ef4444';
+            }
+
+            const progress = ((i + 1) / queueImages.length) * 100;
+            bar.style.width = `${progress}%`;
+        }
+
+        status.innerText = `Sviluppo completato! (${convertedCount} asset)`;
+        document.getElementById('success-actions').style.display = 'flex';
+        
+        // Il tasto matching userà i NUOVI ID se disponibili, altrimenti gli originali
+        const nextIds = convertedIds.length > 0 ? convertedIds.join(',') : fileIds.join(',');
+        document.getElementById('next-matching-btn').onclick = () => {
+            window.location.href = `/the-darkroom/matching?ids=${nextIds}`;
+        };
+    }
+
+    init();
+</script>
+{% endblock %}

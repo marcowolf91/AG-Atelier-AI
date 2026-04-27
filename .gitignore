@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Snapshots and Logs
+snapshots/
+*.log
+harvester_debug.log
+server.log
+
+# Mac OS files
+.DS_Store
+
+# Credentials (IMPORTANT)
+credentials.json
+token.json

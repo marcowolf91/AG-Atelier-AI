@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atelier AI | Dashboard</title>
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Phosphor Icons (Apple-like icons) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+<body>
+
+    <!-- Sfondo animato -->
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <i class="ph ph-sparkle"></i>
+                <span>Atelier AI</span>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active">
+                    <i class="ph ph-squares-four"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="ph ph-flask"></i>
+                    <span>Atelier Lab</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="ph ph-google-drive-logo"></i>
+                    <span>Drive Vault</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="ph ph-engine"></i>
+                    <span>Engine Room</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="ph ph-terminal-window"></i>
+                    <span>Logs</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="avatar">
+                        <i class="ph ph-user"></i>
+                    </div>
+                    <span>System Admin</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <header class="topbar glass-panel">
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Cerca SKU, Brand, Modello...">
+                </div>
+                <div class="actions">
+                    <button class="btn glass-btn"><i class="ph ph-bell"></i></button>
+                    <button class="btn glass-btn attr-primary">New Item</button>
+                </div>
+            </header>
+
+            <div class="content">
+                <h1 class="page-title">Overview</h1>
+                
+                <div class="kpi-grid">
+                    <!-- KPI 1 -->
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-icon total">
+                            <i class="ph ph-archive"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3>Prodotti Totali</h3>
+                            <div class="kpi-value">{{ kpi_total }}</div>
+                        </div>
+                    </div>
+
+                    <!-- KPI 2 -->
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-icon validating">
+                            <i class="ph ph-check-square-offset"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3>Da Validare</h3>
+                            <div class="kpi-value">{{ kpi_validating }}</div>
+                        </div>
+                    </div>
+
+                    <!-- KPI 3 -->
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-icon error">
+                            <i class="ph ph-warning-circle"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3>Errori</h3>
+                            <div class="kpi-value">{{ kpi_errors }}</div>
+                        </div>
+                    </div>
+
+                    <!-- KPI 4 -->
+                    <div class="kpi-card glass-panel">
+                        <div class="kpi-icon published">
+                            <i class="ph ph-storefront"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3>Pubblicati (Shopify)</h3>
+                            <div class="kpi-value">{{ kpi_published }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spazio per futuri moduli, es tabella o log recenti. Al momento vuoto per design pulito. -->
+                <div class="recent-activity glass-panel" style="margin-top: 2rem; min-height: 200px; display: flex; align-items: center; justify-content: center; flex-direction: column; opacity: 0.5;">
+                    <i class="ph ph-chart-line-up" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                    <p>Statistiche dettagliate verranno visualizzate qui (Step successivi)</p>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+</body>
+</html>

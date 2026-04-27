@@ -1,0 +1,1127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">The Darkroom <span style="font-size:1.2rem; color:var(--text-secondary);">(Image Processing & Visual Matching)</span></div>
+
+<div class="glass-panel" style="margin-bottom: 32px; padding: 24px; border-left: 4px solid #ef4444; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h2 style="font-weight: 700; font-size: 1.2rem; color: #fff; margin-bottom: 4px;">Sviluppo & Matching Visivo <span id="debug-total-count" style="color:var(--accent-gold); font-size:0.8rem; margin-left:15px; opacity:0.6;">(Attesa dati...)</span></h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">Browser immagini Drive, conversione formati e associazione SEO ai prodotti.</p>
+    </div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <button id="emergency-start-btn" class="btn attr-primary" onclick="refreshDriveImages(true)" style="background: #ef4444; border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.3); animation: pulse 2s infinite;">
+            <i class="ph ph-lightning"></i> SBLOCCA & SINCRONIZZA
+        </button>
+        <button class="btn glass-btn" onclick="refreshDriveImages(true)">
+            <i class="ph ph-arrows-clockwise sync-icon-class"></i> Aggiorna Drive
+        </button>
+    </div>
+</div>
+
+<div style="display: flex; gap: 10px; margin-bottom: 10px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 12px; border: 1px solid var(--glass-border); position: relative; overflow: hidden;">
+    <div id="global-loader" style="position: absolute; bottom: 0; left: 0; height: 2px; background: var(--accent-gold); width: 0%; transition: width 0.3s ease; display: none;"></div>
+    <button class="tab-btn active" id="tab-btn-browser" onclick="switchTab('browser')"><i class="ph ph-squares-four"></i> 1. Sviluppo (Browser)</button>
+    <button class="tab-btn" id="tab-btn-conversion" onclick="switchTab('conversion')"><i class="ph ph-intersect"></i> 2. Conversione</button>
+    <button class="tab-btn" id="tab-btn-matching" onclick="switchTab('matching')"><i class="ph ph-magnifying-glass"></i> 3. Matching & Lab Ready</button>
+</div>
+
+<!-- SECTION 1: BROWSER -->
+<div id="section-browser" class="darkroom-section active">
+    <!-- SUB-FILTERS -->
+    <div style="display: flex; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+        <div class="sub-tab active" onclick="setImageFilter('all')" id="filter-all">Tutti <span class="badge-count" id="count-all">0</span></div>
+        <div class="sub-tab" onclick="setImageFilter('raw')" id="filter-raw">Da Sviluppare <span class="badge-count" id="count-raw">0</span></div>
+        <div class="sub-tab" onclick="setImageFilter('pending')" id="filter-pending">Da Associare <span class="badge-count" id="count-pending">0</span></div>
+        <div class="sub-tab" onclick="setImageFilter('completed')" id="filter-completed">Completati <span class="badge-count" id="count-completed">0</span></div>
+        
+        <div style="flex-grow: 1;"></div>
+        
+        <div style="display: flex; gap: 8px;">
+            <button id="btn-sync-drive" onclick="refreshDriveImages(true)" class="btn glass-btn" style="font-size: 0.65rem; padding: 4px 12px; height: 28px; border-radius: 6px; color: var(--accent-gold); border-color: rgba(212,175,55,0.3);">
+                <i class="ph ph-arrows-clockwise sync-icon-class"></i> SINCRONIZZA
+            </button>
+            <button id="btn-select-all" onclick="toggleSelectAll()" class="btn glass-btn" style="font-size: 0.65rem; padding: 4px 12px; height: 28px; border-radius: 6px; color: var(--accent-gold); border-color: rgba(212,175,55,0.3);">
+                <i class="ph ph-square"></i> SELEZIONA TUTTI
+            </button>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px;" id="image-grid">
+        <!-- Popolated via JS -->
+    </div>
+
+    </div>
+</div>
+
+<!-- SECTION 2: CONVERSION -->
+<div id="section-conversion" class="darkroom-section" style="display:none;">
+    <div class="glass-panel" style="padding: 25px; text-align: center;">
+        <i class="ph ph-intersect" style="font-size: 2.4rem; color: var(--accent-gold); margin-bottom: 10px; display: block;"></i>
+        <h2 style="font-size: 1.4rem; margin-bottom: 5px;">Ottimizzazione Formati</h2>
+        <p style="color: var(--text-secondary); max-width: 500px; margin: 5px auto 15px; font-size: 0.8rem; line-height: 1.4;">
+            Converti file HEIC e PNG in JPEG ottimizzati per il web e Shopify. 
+        </p>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+            <button onclick="startConversion()" class="btn attr-primary" id="btn-convert" disabled style="min-width: 260px; height: 44px;">
+                CONVERTI SELEZIONATI (0)
+            </button>
+            
+            <div id="conversion-progress-container" style="width: 100%; max-width: 400px; display: none;">
+                <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid var(--glass-border);">
+                    <div id="conversion-progress-bar" style="height: 100%; background: linear-gradient(90deg, var(--accent-gold), #fff); width: 0%; transition: width 0.4s ease;"></div>
+                </div>
+                <div id="conversion-stage" style="font-size: 0.65rem; color: var(--text-secondary); margin-top: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">Inizializzazione...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 3: MATCHING & SEO (HUMAN-CENTRIC HUB) -->
+<div id="section-matching" class="darkroom-section" style="display:none;">
+    <div style="display: grid; grid-template-columns: 240px 1fr 380px; gap: 15px; height: calc(100vh - 180px); min-height: 580px;">
+        
+        <!-- COLONNA 1: CODA ASSET (COSA ABBIAMO SELEZIONATO) -->
+        <div class="glass-panel" style="padding: 16px; display: flex; flex-direction: column; background: rgba(0,0,0,0.4);">
+            <div style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                <span>Coda Asset</span>
+                <span id="match-queue-count" class="badge" style="background: var(--accent-gold); color: #000;">0</span>
+            </div>
+            <div id="match-asset-queue" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: flex-start; padding-right: 5px;">
+                <!-- Populated via JS -->
+                <div style="grid-column: 1/-1; padding: 40px 10px; text-align: center; color: var(--text-secondary); font-size: 0.7rem; opacity: 0.6;">
+                    <i class="ph ph-hand-pointing" style="font-size: 2.5rem; display: block; margin-bottom: 15px; color: var(--accent-gold);"></i>
+                    <p style="font-weight: 800; margin-bottom: 5px; color: #fff;">CODA VUOTA</p>
+                    Torna al <a href="javascript:void(0)" onclick="switchTab('browser')" style="color: var(--accent-gold); text-decoration: underline;">Browser</a> e seleziona i JPG da associare.
+                </div>
+            </div>
+        </div>
+
+        <!-- COLONNA 2: FOCUS PREVIEW (IL PEZZO ATTIVO) -->
+        <div class="glass-panel" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; background: #050505; position: relative; border: 1px solid rgba(255,255,255,0.05);">
+            <div id="match-image-container" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 30px; background: radial-gradient(circle, rgba(255,255,255,0.02) 0%, rgba(0,0,0,1) 100%);">
+                <img src="" id="current-match-img" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 40px 100px rgba(0,0,0,0.9); display: none;">
+                
+                <div id="ai-feedback" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(18,18,18,0.9); color: var(--accent-gold); padding: 10px 20px; border-radius: 30px; font-size: 0.65rem; border: 1px solid rgba(212,175,55,0.3); display: none; z-index: 10; backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Analisi in corso...</div>
+
+                <div id="match-placeholder" style="text-align: center; color: var(--text-secondary);">
+                    <i class="ph ph-sparkle" style="font-size: 4rem; margin-bottom: 20px; color: var(--accent-gold); opacity: 0.2;"></i>
+                    <h3 style="opacity: 0.6; font-weight: 800; letter-spacing: 1px;">HUB DI MATCHING</h3>
+                    <p style="opacity: 0.4; font-size: 0.75rem;">Scegli una foto dalla coda per iniziare.</p>
+                </div>
+            </div>
+
+            <!-- ACTION STRIP SOTTO FOTO -->
+            <div id="match-toolbar" style="padding: 15px 20px; background: rgba(10,10,10,0.95); border-top: 1px solid rgba(255,255,255,0.05); display: none; flex-direction: column; gap: 12px; align-items: center;">
+                <div style="display: flex; gap: 10px; width: 100%; justify-content: center;">
+                    <button onclick="aiSuggestProduct()" id="btn-ai-suggest" class="btn glass-btn" style="height: 36px; padding: 0 20px; font-size: 0.65rem; border-color: var(--accent-gold); color: var(--accent-gold); flex: 1; max-width: 150px;">
+                        <i class="ph ph-sparkle"></i> AI VISION <span id="ai-loader" style="display:none;"><i class="ph ph-circle-notch ph-spin"></i></span>
+                    </button>
+                    <button onclick="visualSearch()" class="btn glass-btn" style="height: 36px; padding: 0 20px; font-size: 0.65rem; border-color: #4285f4; color: #4285f4; flex: 1; max-width: 150px;">
+                        <i class="ph ph-google-logo"></i> GOOGLE
+                    </button>
+                </div>
+                <div id="match-filename-display" style="font-size: 0.55rem; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); opacity: 0.5; letter-spacing: 1px; text-transform: uppercase;">-</div>
+            </div>
+        </div>
+
+        <!-- COLONNA 3: CATALOGO CANDIDATI (DOVE VA LA FOTO?) -->
+        <div style="display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+            
+            <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; max-height: 100%;">
+                <div style="font-size: 0.65rem; font-weight: 800; color: #fff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Prodotti Candidati</span>
+                    <label class="toggle-switch" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="toggle-pending-only" checked onchange="searchProducts(document.getElementById('product-search').value)" style="display:none;">
+                        <span style="font-size: 0.55rem; color: var(--text-secondary);">SOLO SENZA FOTO</span>
+                        <div id="toggle-bg" style="width: 24px; height: 12px; background: var(--accent-gold); border-radius: 10px; position: relative; transition: 0.3s;">
+                            <div id="toggle-dot" style="width: 8px; height: 8px; background: #000; border-radius: 50%; position: absolute; top: 2px; right: 2px; transition: 0.3s;"></div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- MINI SEARCH PER CASI COMPLESSI -->
+                <div style="position: relative; margin-bottom: 16px;">
+                    <input type="text" id="product-search" class="glass-input" placeholder="Filtra catalogo..." oninput="searchProducts(this.value)" style="height: 36px; font-size: 0.75rem; padding-left: 34px;">
+                    <i class="ph ph-magnifying-glass" style="position: absolute; left: 10px; top: 10px; font-size: 1rem; color: var(--text-secondary);"></i>
+                    <div id="search-spinner" style="position: absolute; right: 10px; top: 10px; display: none;"><i class="ph ph-circle-notch ph-spin" style="color: var(--accent-gold);"></i></div>
+                </div>
+
+                <!-- LISTA PRODOTTI -->
+                <div id="product-candidates-list" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
+                    <!-- Populated via JS -->
+                    <div style="padding: 40px 10px; text-align: center; color: var(--text-secondary); font-size: 0.7rem; opacity: 0.6;">
+                        <i class="ph ph-package" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>
+                        Nessun prodotto disponibile.<br>Controlla lo stato dei prodotti in "The Loom".
+                    </div>
+                </div>
+
+                <!-- SEO & ACTION (COMPARE SOLO DOPO SELEZIONE) -->
+                <div id="matching-actions-area" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); display: none;">
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-size: 0.55rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 6px; display: block;">SEO SLUG</label>
+                        <input type="text" id="seo-filename" class="glass-input" style="height: 36px; font-size: 0.75rem; color: var(--accent-gold); font-family: 'JetBrains Mono', monospace;">
+                    </div>
+                    <button onclick="finalizeAssociation()" id="btn-associate" class="btn attr-primary" style="width: 100%; padding: 14px; font-weight: 800; font-size: 0.7rem; text-transform: uppercase;">
+                        ASSOCIA E PUBBLICA <i class="ph ph-paper-plane-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ATTIVITÀ RECENTI (MINI) -->
+            <div class="glass-panel" style="padding: 16px;">
+                <div style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Match Recenti</div>
+                <div id="recent-matches-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Popolated via JS -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+    </div>
+</div>
+
+<style>
+.sub-tab { font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); cursor: pointer; padding: 6px 12px; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.sub-tab:hover { color: #fff; background: rgba(255,255,255,0.03); }
+.sub-tab.active { color: var(--accent-gold); background: rgba(212,175,55,0.1); }
+.badge-count { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; color: var(--text-secondary); }
+.sub-tab.active .badge-count { color: var(--accent-gold); background: rgba(212,175,55,0.2); }
+
+.darkroom-section { animation: fadeIn 0.3s ease; }
+.tab-btn { background: none; border: none; padding: 10px 20px; color: var(--text-secondary); font-size: 0.85rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+.tab-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.tab-btn.active { background: #ef4444; color: #fff; box-shadow: 0 4px 12px rgba(239,68,68,0.2); }
+
+.image-card { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; transition: all 0.2s; cursor: pointer; position: relative; }
+.image-card:hover { transform: translateY(-4px); border-color: var(--accent-gold); }
+.image-card.selected { border-color: var(--accent-gold); box-shadow: 0 0 15px rgba(212,175,55,0.2); }
+.image-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #000; }
+.image-card .info { padding: 8px 10px; }
+.image-card .name { font-size: 0.65rem; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.image-card .meta { font-size: 0.55rem; color: var(--text-secondary); margin-top: 2px; }
+.image-card .check-badge { position: absolute; top: 6px; right: 6px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-gold); color: #000; display: none; align-items: center; justify-content: center; font-size: 0.6rem; z-index: 11; }
+.image-card.selected .check-badge { display: flex; }
+
+.dropdown-results { position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1a; border: 1px solid var(--glass-border); border-radius: 12px; z-index: 100; max-height: 250px; overflow-y: auto; margin-top: 8px; }
+.result-item { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+.result-item:hover { background: rgba(255,255,255,0.05); }
+.result-item:last-child { border-bottom: none; }
+
+.queue-item { aspect-ratio: 1; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: all 0.2s ease; background: #000; position: relative; }
+.queue-item.active { border-color: var(--accent-gold); transform: scale(0.95); box-shadow: 0 0 15px rgba(212,175,55,0.3); }
+.queue-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; transition: 0.2s; }
+.queue-item:hover img { opacity: 1; }
+.queue-item.active img { opacity: 1; }
+
+.product-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 12px; }
+.product-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(212,175,55,0.2); }
+.product-card.selected { background: rgba(16,185,129,0.08); border-color: #10b981; box-shadow: 0 5px 15px rgba(16,185,129,0.1); }
+.product-card .brand { font-size: 0.6rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.5px; }
+.product-card .model { font-size: 0.75rem; font-weight: 700; color: #fff; margin-top: 2px; }
+.product-card .meta { font-size: 0.6rem; color: var(--text-secondary); margin-top: 4px; }
+</style>
+
+<script>
+    window.onerror = function(msg, url, line) {
+        console.error("Global JS Error:", msg, "at", url, ":", line);
+    };
+    
+    // UI Guard
+    setTimeout(() => {
+        const loader = document.getElementById('global-loader');
+        if (loader) loader.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }, 3000);
+
+    let allImages = [];
+    // --- GLOBAL STATE MANAGER ---
+    let _selectedIds = [];
+    const selectionHandler = {
+        get(target, prop) {
+            if (prop === 'length') return target.length;
+            if (typeof target[prop] === 'function') return target[prop].bind(target);
+            return target[prop];
+        },
+        set(target, prop, value) {
+            target[prop] = value;
+            updateContextButtons();
+            return true;
+        }
+    };
+
+    // Proxy che intercetta push, splice e assegnazioni
+    let selectedImageIds = new Proxy(_selectedIds, {
+        get(target, prop) {
+            const val = target[prop];
+            if (typeof val === 'function') {
+                if (['push', 'pop', 'shift', 'unshift', 'splice', 'filter'].includes(prop)) {
+                    return function(...args) {
+                        const result = Array.prototype[prop].apply(target, args);
+                        if (prop === 'filter') {
+                            // Se è filter, restituisce un nuovo array, quindi dobbiamo ri-applicare il proxy o gestire la riassegnazione
+                            return result; 
+                        }
+                        updateContextButtons();
+                        return result;
+                    }
+                }
+                return val.bind(target);
+            }
+            return val;
+        }
+    });
+
+    // Funzione di utilità per svuotare in sicurezza
+    function clearSelection() {
+        _selectedIds.length = 0;
+        updateContextButtons();
+        renderImages();
+    }
+    let currentMatchFile = null;
+    let selectedProductId = null;
+    let currentImageFilter = 'all';
+    let isConverting = false; // Lucchetto per evitare doppi invii
+
+    async function refreshDriveImages(forced = false) {
+        const loader = document.getElementById('global-loader');
+        const grid = document.getElementById('image-grid');
+        const syncIcons = document.querySelectorAll('.sync-icon-class');
+        
+        if (loader) {
+            loader.style.display = 'block';
+            loader.style.width = '30%';
+        }
+        syncIcons.forEach(icon => icon.classList.add('ph-spin'));
+
+        // Se la griglia è vuota, mostriamo lo spinner locale, altrimenti solo quello globale
+        if (allImages.length === 0) {
+            grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-secondary);"><i class="ph ph-circle-notch ph-spin" style="font-size: 2rem; margin-bottom: 12px;"></i><div>${forced ? 'Scansione Drive...' : 'Caricamento rapido...'}</div></div>`;
+        }
+        
+        try {
+            const url = forced ? `/api/darkroom/images?refresh=true&_=${Date.now()}` : `/api/darkroom/images?_=${Date.now()}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            
+            allImages = await res.json();
+            console.log("Drive Sync Success:", allImages.length);
+            
+            document.getElementById('debug-total-count').innerText = `(${allImages.length} asset)`;
+            
+            if (loader) {
+                loader.style.width = '100%';
+                setTimeout(() => { 
+                    loader.style.display = 'none';
+                    loader.style.width = '0%';
+                }, 400);
+            }
+
+            updateCounts();
+            renderImages();
+        } catch(e) {
+            console.error("Drive Sync Error:", e);
+            showToast("Errore sincronizzazione Drive", "error");
+            if (loader) loader.style.display = 'none';
+        } finally {
+            syncIcons.forEach(icon => icon.classList.remove('ph-spin'));
+        }
+    }
+
+    function updateCounts() {
+        console.log("Updating counts with", allImages.length, "images");
+        const jpgNames = new Set(
+            allImages
+                .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
+                .map(img => img.name.split('.')[0].toLowerCase())
+        );
+        
+        const counts = {
+            all: allImages.length,
+            raw: allImages.filter(img => {
+                if (!img.name || !img.mimeType) return false;
+                const isRaw = img.name.toLowerCase().endsWith('.heic') || img.mimeType.includes('heif') || img.mimeType.includes('png');
+                const nameWithoutExt = img.name.split('.')[0].toLowerCase();
+                return !img.associated && isRaw && !jpgNames.has(nameWithoutExt);
+            }).length,
+            pending: allImages.filter(img => {
+                if (!img.name) return false;
+                return !img.associated && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg'));
+            }).length,
+            completed: allImages.filter(img => img.associated).length
+        };
+        console.log("Final counts:", counts);
+        document.getElementById('count-all').innerText = counts.all;
+        document.getElementById('count-raw').innerText = counts.raw;
+        document.getElementById('count-pending').innerText = counts.pending;
+        document.getElementById('count-completed').innerText = counts.completed;
+    }
+
+    function setImageFilter(filter) {
+        currentImageFilter = filter;
+        document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById('filter-' + filter).classList.add('active');
+        
+        // Aggiorniamo lo stato del tasto "Seleziona Tutti" per il nuovo filtro
+        const btn = document.getElementById('btn-select-all');
+        btn.innerHTML = '<i class="ph ph-square"></i> SELEZIONA TUTTI';
+        
+        renderImages();
+    }
+
+    function toggleSelectAll() {
+        const jpgNames = new Set(allImages.filter(img => img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')).map(img => img.name.split('.')[0].toLowerCase()));
+        
+        const filtered = allImages.filter(img => {
+            if(currentImageFilter === 'all') return true;
+            if(currentImageFilter === 'completed') return img.associated;
+            
+            const isRaw = img.name.toLowerCase().endsWith('.heic') || img.mimeType.includes('heif') || img.mimeType.includes('png');
+            const nameWithoutExt = img.name.split('.')[0].toLowerCase();
+            
+            if(img.associated) return false;
+            
+            if(currentImageFilter === 'raw') {
+                return isRaw && !jpgNames.has(nameWithoutExt);
+            }
+            if(currentImageFilter === 'pending') {
+                return !isRaw;
+            }
+            return true;
+        });
+
+        // Controlliamo se sono già tutti selezionati
+        const allInFilteredSelected = filtered.every(img => selectedImageIds.includes(img.id));
+        const btn = document.getElementById('btn-select-all');
+
+        if (allInFilteredSelected) {
+            // Deselezioniamo solo quelli di questo filtro
+            const filteredIds = filtered.map(img => String(img.id));
+            // Usiamo filter ma riassegniamo il contenuto, non l'oggetto
+            const newIds = _selectedIds.filter(id => !filteredIds.includes(id));
+            _selectedIds.length = 0;
+            _selectedIds.push(...newIds);
+            
+            btn.innerHTML = '<i class="ph ph-square"></i> SELEZIONA TUTTI';
+            showToast("Deselezionati tutti gli asset filtrati", "info");
+        } else {
+            // Selezioniamo tutti quelli di questo filtro
+            filtered.forEach(img => {
+                if(!selectedImageIds.includes(img.id)) {
+                    selectedImageIds.push(img.id);
+                }
+            });
+            btn.innerHTML = '<i class="ph ph-x-square"></i> DESELEZIONA TUTTI';
+            showToast(`✅ Selezionati ${filtered.length} asset`, "info");
+        }
+        
+        renderImages();
+        updateContextButtons();
+    }
+
+    function renderImages() {
+        const grid = document.getElementById('image-grid');
+        if (!grid) return;
+        
+        grid.innerHTML = '';
+        
+        const jpgNames = new Set(
+            allImages
+                .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
+                .map(img => img.name.split('.')[0].toLowerCase())
+        );
+
+        const filtered = allImages.filter(img => {
+            if(currentImageFilter === 'all') return true;
+            if(currentImageFilter === 'completed') return img.associated;
+            
+            const isRaw = (img.name || "").toLowerCase().endsWith('.heic') || (img.mimeType || "").includes('heif') || (img.mimeType || "").includes('png');
+            const nameWithoutExt = (img.name || "").split('.')[0].toLowerCase();
+            
+            if(currentImageFilter === 'raw') return !img.associated && isRaw && !jpgNames.has(nameWithoutExt);
+            if(currentImageFilter === 'pending') return !img.associated && (img.name || "").toLowerCase().match(/\.(jpg|jpeg)$/);
+            return true;
+        });
+
+        if(filtered.length === 0) {
+            grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-secondary);">Nessun asset trovato in questa categoria.</div>`;
+            return;
+        }
+
+        filtered.forEach(img => {
+            const nameWithoutExt = (img.name || "").split('.')[0].toLowerCase();
+            const isHeic = (img.name || "").toLowerCase().endsWith('.heic') || (img.mimeType || "").includes('heif') || (img.mimeType || "").includes('heic');
+            const isPng = (img.name || "").toLowerCase().endsWith('.png') || (img.mimeType || "").includes('png');
+            const needsConversion = isHeic || isPng;
+            const alreadyDeveloped = needsConversion && jpgNames.has(nameWithoutExt);
+            
+            const card = document.createElement('div');
+            const isReady = !needsConversion && !img.associated;
+            const isCompleted = img.associated;
+            
+            card.className = `image-card ${selectedImageIds.includes(img.id) ? 'selected' : ''}`;
+            
+            if (isCompleted || alreadyDeveloped) {
+                card.style.opacity = "0.4";
+                card.style.filter = "grayscale(1)";
+            } else if (isReady) {
+                card.style.opacity = "1.0";
+            }
+            
+            card.onclick = () => toggleImageSelection(img, card, needsConversion);
+            
+            let badgeHtml = '';
+            if(isCompleted) {
+                badgeHtml = `<div style="position:absolute; top:8px; left:8px; background:#10b981; color:#fff; font-size:0.6rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.3);"><i class="ph ph-check-circle"></i> ASSOCIATO</div>`;
+            } else if(alreadyDeveloped) {
+                badgeHtml = `<div style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.15); color:rgba(255,255,255,0.6); font-size:0.55rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; backdrop-filter:blur(4px); border:1px solid rgba(255,255,255,0.1);">GIÀ SVILUPPATA</div>`;
+            } else if(needsConversion) {
+                badgeHtml = `<div style="position:absolute; top:8px; left:8px; background:#ef4444; color:#fff; font-size:0.6rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.3);">DA SVILUPPARE</div>`;
+            } else {
+                badgeHtml = `<div style="position:absolute; top:8px; left:8px; background:#4285f4; color:#fff; font-size:0.6rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.3);">DA ASSOCIARE</div>`;
+            }
+
+            card.innerHTML = `
+                ${badgeHtml}
+                <div style="width:100%; aspect-ratio:1; overflow:hidden; background:#000;">
+                    <img src="${img.thumbnailLink ? img.thumbnailLink.replace('=s220', '=s800') : `/api/drive/thumbnail/${img.id}`}" loading="lazy" style="width:100%; height:100%; object-fit:cover; filter: ${isCompleted || alreadyDeveloped ? 'grayscale(1)' : 'none'};" onerror="this.src='/api/drive/thumbnail/${img.id}'">
+                </div>
+                <div class="check-badge"><i class="ph ph-check"></i></div>
+                <div class="info">
+                    <div class="name" style="${isCompleted || alreadyDeveloped ? 'color:var(--text-secondary);' : ''}">${img.name}</div>
+                    <div class="meta">${(img.size / 1024 / 1024).toFixed(2)} MB</div>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function toggleImageSelection(img, el, needsConversion) {
+        const id = String(img.id);
+        const idx = selectedImageIds.indexOf(id);
+        
+        if(idx !== -1) {
+            selectedImageIds.splice(idx, 1);
+            el.classList.remove('selected');
+        } else {
+            selectedImageIds.push(id);
+            el.classList.add('selected');
+            currentMatchFile = img;
+            prepareForMatch(img);
+        }
+    }
+
+    function updateContextButtons() {
+        try {
+            const count = selectedImageIds.length;
+            const floatBar = document.getElementById('floating-actions');
+            const badge = document.getElementById('selected-count-badge');
+            const btnFloat = document.getElementById('floating-action-btn');
+            
+            if (!floatBar) return;
+
+            if (count > 0) {
+                floatBar.style.display = 'flex';
+                floatBar.style.opacity = '1';
+                floatBar.style.pointerEvents = 'auto';
+                if (badge) badge.innerText = count;
+                
+                // Conteggio conversione
+                const toConvertCount = allImages.filter(img => 
+                    selectedImageIds.includes(String(img.id)) && 
+                    ((img.name || "").toLowerCase().endsWith('.heic') || (img.mimeType || "").toLowerCase().includes('heif'))
+                ).length;
+
+                if (btnFloat) {
+                    if (toConvertCount > 0) {
+                        btnFloat.innerHTML = `SVILUPPA ${toConvertCount} ASSET <i class="ph ph-magic-wand"></i>`;
+                        btnFloat.onclick = () => {
+                            switchTab('conversion');
+                            // Piccola attesa per far apparire la UI e poi avviamo
+                            setTimeout(() => startConversion(), 300);
+                        };
+                    } else {
+                        btnFloat.innerHTML = `VAI AL MATCHING <i class="ph ph-link"></i>`;
+                        btnFloat.onclick = () => switchTab('matching');
+                    }
+                }
+            } else {
+                floatBar.style.display = 'none';
+            }
+        } catch (err) {
+            console.error("Sync Error:", err);
+        }
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.darkroom-section').forEach(s => s.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        
+        document.getElementById(`section-${tabId}`).style.display = 'block';
+        
+        // Se c'è un evento (click diretto sui tab), attiviamo il bottone
+        if (window.event && window.event.currentTarget && window.event.currentTarget.classList.contains('tab-btn')) {
+            window.event.currentTarget.classList.add('active');
+        } else {
+            // Altrimenti cerchiamo il tab corrispondente per ID se esiste
+            const tabBtn = document.getElementById(`tab-btn-${tabId}`);
+            if (tabBtn) tabBtn.classList.add('active');
+        }
+        
+        if(tabId === 'matching') {
+            loadMatchingHub();
+            // Se abbiamo asset selezionati ma nessuno attivo, carichiamo il primo
+            if(selectedImageIds.length > 0 && !currentMatchFile) {
+                const firstId = selectedImageIds[0];
+                const img = allImages.find(x => x.id === firstId);
+                if(img) {
+                    currentMatchFile = img;
+                    prepareForMatch(img);
+                }
+            }
+        }
+
+        if(tabId === 'lab-ready') refreshLabReady();
+    }
+
+    function prepareForMatch(img) {
+        document.getElementById('match-placeholder').style.display = 'none';
+        const imgEl = document.getElementById('current-match-img');
+        const toolbar = document.getElementById('match-toolbar');
+        const filenameDisplay = document.getElementById('match-filename-display');
+        
+        imgEl.src = `/api/drive/proxy/${img.id}`;
+        imgEl.style.display = 'block';
+        toolbar.style.display = 'flex';
+        filenameDisplay.innerText = img.name;
+        
+        // Suggerimento nome SEO basato sul nome originale se possibile
+        const cleanName = img.name.split('.')[0].toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '-');
+        document.getElementById('seo-filename').value = cleanName;
+        
+        // Se abbiamo selezionato più di una foto, mostriamo il suggerimento del batch
+        const batchHint = document.getElementById('multi-associate-hint');
+        const batchCount = document.getElementById('batch-count-val');
+        if (selectedImageIds.length > 1) {
+            batchHint.style.display = 'flex';
+            batchCount.innerText = selectedImageIds.length;
+        } else {
+            batchHint.style.display = 'none';
+        }
+    }
+
+    async function aiSuggestProduct() {
+        if (!currentMatchFile) {
+            showToast("⚠️ Seleziona prima un'immagine dal browser.", "warning");
+            return;
+        }
+
+        const btn = document.getElementById('btn-ai-suggest');
+        const loader = document.getElementById('ai-loader');
+        const feedback = document.getElementById('ai-feedback');
+        
+        btn.disabled = true;
+        loader.style.display = 'inline-block';
+        feedback.innerText = "Atelier AI sta analizzando l'asset...";
+        feedback.style.display = 'block';
+
+        try {
+            const res = await fetch(`/api/darkroom/analyze-vision?file_id=${currentMatchFile.id}`);
+            const data = await res.json();
+            
+            if (data.suggestion) {
+                const searchInput = document.getElementById('product-search');
+                searchInput.value = data.suggestion;
+                feedback.innerText = `L'AI suggerisce: "${data.suggestion}"`;
+                
+                // Triggeriamo la ricerca automatica
+                searchProducts(data.suggestion);
+                
+                // Se c'è un suggerimento per il nome SEO
+                if (data.seo_name) {
+                    document.getElementById('seo-filename').value = data.seo_name;
+                }
+                
+                showToast("✨ Suggerimento AI ricevuto!", "success");
+            } else {
+                feedback.innerText = "L'AI non è riuscita a identificare il prodotto.";
+            }
+        } catch(e) {
+            console.error("Errore Vision AI:", e);
+            feedback.innerText = "Errore durante l'analisi visiva.";
+        } finally {
+            btn.disabled = false;
+            loader.style.display = 'none';
+        }
+    }
+
+    async function loadMatchingHub() {
+        renderMatchQueue();
+        await fetchInitialCandidates();
+    }
+
+    function renderMatchQueue() {
+        const queueEl = document.getElementById('match-asset-queue');
+        const countEl = document.getElementById('match-queue-count');
+        
+        queueEl.innerHTML = '';
+        countEl.innerText = selectedImageIds.length;
+
+        if (selectedImageIds.length === 0) {
+            queueEl.innerHTML = '<div style="grid-column: 1/-1; padding: 40px 10px; text-align: center; color: var(--text-secondary); font-size: 0.7rem; opacity: 0.5;"><i class="ph ph-images" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>Seleziona asset dal browser</div>';
+            
+            // RESET CENTRAL PREVIEW IF QUEUE EMPTY
+            document.getElementById('current-match-img').style.display = 'none';
+            document.getElementById('match-toolbar').style.display = 'none';
+            document.getElementById('match-placeholder').style.display = 'block';
+            document.getElementById('ai-feedback').style.display = 'none';
+            currentMatchFile = null;
+            return;
+        }
+
+        selectedImageIds.forEach(id => {
+            const img = allImages.find(x => x.id === id);
+            if(!img) return;
+
+            const item = document.createElement('div');
+            item.className = `queue-item ${currentMatchFile && currentMatchFile.id === id ? 'active' : ''}`;
+            item.onclick = () => {
+                currentMatchFile = img;
+                prepareForMatch(img);
+                renderMatchQueue(); // Refresh active state
+            };
+            item.innerHTML = `<img src="/api/drive/thumbnail/${id}" loading="lazy">`;
+            queueEl.appendChild(item);
+        });
+
+        // AUTO-SELECT FIRST IF NONE ACTIVE
+        if (!currentMatchFile && selectedImageIds.length > 0) {
+            const firstId = selectedImageIds[0];
+            const firstImg = allImages.find(x => x.id === firstId);
+            if (firstImg) {
+                currentMatchFile = firstImg;
+                prepareForMatch(firstImg);
+            }
+        }
+    }
+
+    async function fetchInitialCandidates() {
+        const listEl = document.getElementById('product-candidates-list');
+        const onlyPending = document.getElementById('toggle-pending-only').checked;
+        listEl.innerHTML = '<div style="padding: 20px; text-align: center;"><i class="ph ph-circle-notch ph-spin"></i></div>';
+        
+        try {
+            const res = await fetch(`/api/darkroom/search-products?q=&only_pending=${onlyPending}`);
+            const products = await res.json();
+            renderProductCandidates(products);
+        } catch(e) {
+            listEl.innerHTML = '<div style="color:#ef4444; font-size:0.7rem;">Errore caricamento.</div>';
+        }
+    }
+
+    function renderProductCandidates(products) {
+        const listEl = document.getElementById('product-candidates-list');
+        const onlyPending = document.getElementById('toggle-pending-only').checked;
+        const toggleBg = document.getElementById('toggle-bg');
+        const toggleDot = document.getElementById('toggle-dot');
+        
+        // Sync UI
+        if (onlyPending) {
+            toggleBg.style.background = 'var(--accent-gold)';
+            toggleDot.style.right = '2px';
+            toggleDot.style.left = 'auto';
+        } else {
+            toggleBg.style.background = 'rgba(255,255,255,0.1)';
+            toggleDot.style.left = '2px';
+            toggleDot.style.right = 'auto';
+        }
+
+        listEl.innerHTML = '';
+
+        if(products.length === 0) {
+            listEl.innerHTML = '<div style="padding: 40px 10px; text-align: center; color: var(--text-secondary); font-size: 0.7rem; opacity: 0.6;"><i class="ph ph-package" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>Nessun candidato trovato.</div>';
+            return;
+        }
+
+        products.forEach(p => {
+            const card = document.createElement('div');
+            card.className = `product-card ${selectedProductId === p.id ? 'selected' : ''}`;
+            card.onclick = () => {
+                selectProduct(p);
+                renderProductCandidates(products); // Refresh selection
+            };
+            
+            const existingPhotos = JSON.parse(p.matched_images_json || '[]').length;
+
+            card.innerHTML = `
+                <div style="flex-grow: 1;">
+                    <div class="brand">${p.brand}</div>
+                    <div class="model">${p.model}</div>
+                    <div class="meta">#${p.id} • ${p.category || 'No Cat'} • ${existingPhotos} foto</div>
+                </div>
+                <div style="font-weight: 800; font-size: 0.7rem; color: #fff;">€ ${p.price ? p.price.toLocaleString() : '0'}</div>
+            `;
+            listEl.appendChild(card);
+        });
+    }
+
+    async function searchProducts(q) {
+        const spinner = document.getElementById('search-spinner');
+        if (spinner) spinner.style.display = 'block';
+        const onlyPending = document.getElementById('toggle-pending-only').checked;
+
+        try {
+            const res = await fetch(`/api/darkroom/search-products?q=${encodeURIComponent(q)}&only_pending=${onlyPending}`);
+            const products = await res.json();
+            renderProductCandidates(products);
+        } catch(e) {
+            console.error("Errore ricerca:", e);
+        } finally {
+            if (spinner) spinner.style.display = 'none';
+        }
+    }
+
+    function selectProduct(p) {
+        selectedProductId = p.id;
+        
+        // Mostriamo l'area azioni
+        document.getElementById('matching-actions-area').style.display = 'block';
+        
+        // --- NUOVO NAMING SEO ---
+        const parts = [p.brand, p.model, p.category || '', p.color || ''];
+        const base = parts
+            .filter(part => part && part.trim() !== '')
+            .map(part => part.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))
+            .join('-');
+            
+        document.getElementById('seo-filename').value = base;
+        
+        // Rerender dei candidati per mostrare lo stato selected
+        // Invece di rifare tutto il fetch, aggiorniamo solo le classi se possibile
+        document.querySelectorAll('.product-card').forEach(card => {
+            card.classList.remove('selected');
+            if(card.innerText.includes(`#${p.id}`)) card.classList.add('selected');
+        });
+    }
+
+    async function finalizeAssociation() {
+        if (!selectedProductId || _selectedIds.length === 0) {
+            showToast("⚠️ Seleziona un prodotto e almeno un asset.", "warning");
+            return;
+        }
+
+        const btn = document.getElementById('btn-associate');
+        btn.disabled = true;
+        const resProd = await fetch(`/api/darkroom/search-products?q=${selectedProductId}`);
+        const products = await resProd.json();
+        const p = products.find(x => x.id == selectedProductId);
+        let startIdx = JSON.parse((p ? p.matched_images_json : '[]') || '[]').length;
+
+        for(let i=0; i < selectedImageIds.length; i++) {
+            const fid = selectedImageIds[i];
+            const photoNum = (startIdx + i + 1).toString().padStart(2, '0');
+            const nameSuffix = `-${photoNum}`;
+            
+            const payload = {
+                file_id: fid,
+                product_id: selectedProductId,
+                new_name: `${baseName}${nameSuffix}`
+            };
+
+            try {
+                const res = await fetch('/api/darkroom/associate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if(res.ok) successCount++;
+            } catch(e) {
+                console.error("Errore associazione:", e);
+            }
+        }
+
+        if (successCount > 0) {
+            showToast(`✅ ${successCount} foto inviate al Lab correttamente!`, "success");
+            
+            // AGGIUNGI ALLA LISTA RECENTI
+            const recentList = document.getElementById('recent-matches-list');
+            if(recentList.innerText.includes("Nessuna associazione")) recentList.innerHTML = '';
+            
+            const item = document.createElement('div');
+            item.style = "background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 12px; animation: slideInRight 0.4s ease;";
+            item.innerHTML = `
+                <img src="${currentImgSrc}" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover;">
+                <div style="flex-grow: 1; overflow: hidden;">
+                    <div style="font-size: 0.7rem; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentProdName}</div>
+                    <div style="font-size: 0.6rem; color: #10b981;">${successCount} foto caricate</div>
+                </div>
+            `;
+            recentList.prepend(item);
+            if(recentList.children.length > 5) recentList.lastElementChild.remove();
+
+            // RESET E CARICAMENTO PROSSIMA FOTO
+            selectedImageIds = []; // Svuotiamo la selezione corrente
+            
+            // Puliamo UI
+            document.getElementById('product-search').value = '';
+            document.getElementById('selected-product-info').style.display = 'none';
+            document.getElementById('seo-filename').value = '';
+            
+            // Ricarichiamo browser
+            refreshDriveImages(true);
+            
+            // Reset Preview
+            document.getElementById('current-match-img').style.display = 'none';
+            document.getElementById('match-toolbar').style.display = 'none';
+            document.getElementById('match-placeholder').style.display = 'block';
+            currentMatchFile = null;
+            selectedProductId = null;
+        } else {
+            showToast("Errore durante l'invio al Lab.", "error");
+        }
+
+        btn.innerHTML = `ASSOCIA E INVIA AL LAB <i class="ph ph-flask"></i>`;
+        btn.disabled = false;
+    }
+
+    async function visualSearch() {
+        if (!currentMatchFile) return;
+        
+        // Se l'AI ha già identificato qualcosa, cerchiamo quello
+        const aiSuggestion = document.getElementById('product-search').value;
+        let query = "";
+        
+        if (aiSuggestion && aiSuggestion !== "") {
+            query = aiSuggestion;
+            showToast(`🔍 Ricerca Google per: ${query}...`);
+        } else {
+            // Altrimenti cerchiamo il nome del file pulito
+            query = (currentMatchFile.name || "").split('.')[0].replace(/[-_]/g, ' ');
+            showToast(`🔍 Ricerca Google per nome file...`);
+        }
+        
+        window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
+    }
+
+    async function startConversion() {
+        if (isConverting) return;
+        
+        const btn = document.getElementById('btn-convert');
+        const originalText = btn ? btn.innerText : "";
+        if(selectedImageIds.length === 0) return;
+        
+        const idsToProcess = [..._selectedIds]; // Copia immediata
+        isConverting = true;
+        
+        if (btn) {
+            btn.disabled = true;
+            btn.innerText = "Avvio sviluppo...";
+        }
+
+        // Svuotiamo SUBITO la selezione per evitare doppi invii
+        _selectedIds.length = 0;
+        updateContextButtons();
+        renderImages();
+
+        try {
+            const res = await fetch('/api/darkroom/convert-bulk', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({file_ids: idsToProcess})
+            });
+            
+            if (res.ok) {
+                showToast("Sviluppo avviato in background...", "info");
+                checkConversionStatus(); // Inizia il polling
+            } else {
+                showToast("Errore nell'avvio della conversione", "error");
+                isConverting = false;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                }
+            }
+        } catch(e) {
+            console.error("Conversion error:", e);
+            showToast("Errore di connessione", "error");
+            isConverting = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
+        } finally {
+            // Sblocchiamo dopo un breve delay di sicurezza
+            setTimeout(() => { isConverting = false; }, 1000);
+        }
+    }
+
+    async function checkConversionStatus() {
+        try {
+            const res = await fetch('/api/darkroom/conversion-status');
+            const status = await res.json();
+            
+            const btn = document.getElementById('btn-convert');
+            const container = document.getElementById('conversion-progress-container');
+            const bar = document.getElementById('conversion-progress-bar');
+            const stage = document.getElementById('conversion-stage');
+            
+            if (status.active) {
+                container.style.display = 'block';
+                const percent = Math.round((status.current / status.total) * 100);
+                bar.style.width = `${percent}%`;
+                stage.innerText = status.stage || `Elaborazione (${status.current}/${status.total})...`;
+                
+                btn.innerText = "SVILUPPO IN CORSO...";
+                btn.classList.add('pulse');
+                setTimeout(checkConversionStatus, 1000); 
+            } else {
+                if (status.total > 0 && status.stage === "Completato") {
+                    bar.style.width = '100%';
+                    stage.innerText = "COMPLETATO!";
+                    
+                    // Forza il ricaricamento delle immagini per vedere i nuovi JPG (AWAIT PER EVITARE RACE CONDITION)
+                    await refreshDriveImages(true);
+
+                    // --- AUTO-SELEZIONE RISULTATI ---
+                    if (status.results && status.results.length > 0) {
+                        // Svuotiamo la selezione precedente e carichiamo i nuovi JPG
+                        _selectedIds.length = 0;
+                        status.results.forEach(rid => {
+                            _selectedIds.push(String(rid));
+                        });
+                        console.log("Auto-selected new JPGs:", status.results);
+                    }
+                    
+                    // --- NUOVO REPORT DI RIEPILOGO ---
+                    const summaryHtml = `
+                        <div id="conversion-summary-report" style="background: rgba(212,175,55,0.05); border: 1px solid var(--accent-gold); border-radius: 12px; padding: 24px; margin-top: 24px; text-align: center; animation: fadeIn 0.4s ease; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                            <div style="font-size: 2.5rem; margin-bottom: 12px;">✨</div>
+                            <h3 style="margin-bottom: 10px; color: var(--accent-gold); font-weight: 800; letter-spacing: 1px;">BATCH COMPLETATO</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); max-width: 300px; margin: 0 auto 24px; line-height: 1.5;">
+                                Abbiamo sviluppato con successo <b>${status.total}</b> asset.<br>
+                                I nuovi JPEG sono stati selezionati e sono pronti per il matching.
+                            </p>
+                            <button onclick="switchTab('matching')" class="btn attr-primary" style="width: 100%; border-radius: 30px; height: 50px; font-weight: 800; letter-spacing: 1px;">
+                                VAI AL MATCHING ORA <i class="ph ph-arrow-right"></i>
+                            </button>
+                        </div>
+                    `;
+                            <div style="display: flex; gap: 12px; justify-content: center;">
+                                <button onclick="closeSummaryAndRefresh()" class="btn glass-btn" style="font-size: 0.7rem;">CHIUDI</button>
+                                <button onclick="jumpToMatching()" class="btn attr-primary" style="font-size: 0.7rem; padding: 10px 20px;">
+                                    PROCEDI AL MATCHING SEO <i class="ph ph-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (!document.getElementById('conversion-summary-report')) {
+                        container.insertAdjacentHTML('afterend', summaryHtml);
+                    }
+                    
+                    updateContextButtons();
+                    
+                    setTimeout(() => {
+                        container.style.display = 'none';
+                        bar.style.width = '0%';
+                        btn.innerText = "CONVERTI SELEZIONATI (0)";
+                        btn.disabled = true;
+                        btn.classList.remove('pulse');
+                    }, 10000); // Lo lasciamo visibile per 10 secondi o finché non cliccano
+                } else if (status.stage && status.stage.startsWith("Errore")) {
+                    stage.innerText = status.stage;
+                    stage.style.color = "#ef4444";
+                    btn.disabled = false;
+                    btn.innerText = "RIPROVA SVILUPPO";
+                }
+            }
+        } catch(e) {
+            console.error("Errore polling status:", e);
+        }
+    }
+
+    function closeSummaryAndRefresh() {
+        const report = document.getElementById('conversion-summary-report');
+        if (report) report.remove();
+        refreshDriveImages(true);
+    }
+
+    function jumpToMatching() {
+        const report = document.getElementById('conversion-summary-report');
+        if (report) report.remove();
+        refreshDriveImages(true);
+        switchTab('matching');
+    }
+
+    async function refreshLabReady() {
+        const tbody = document.getElementById('lab-ready-list');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px;"><i class="ph ph-spinner ph-spin"></i> Caricamento...</td></tr>';
+        
+        try {
+            const res = await fetch('/api/darkroom/lab-ready');
+            const data = await res.json();
+            
+            tbody.innerHTML = '';
+            if(data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-secondary);">Nessun prodotto con foto associate.</td></tr>';
+                return;
+            }
+
+            data.forEach(p => {
+                const tr = document.createElement('tr');
+                const images = JSON.parse(p.matched_images_json || '[]');
+                tr.innerHTML = `
+                    <td>
+                        <div style="font-weight:700; color:#fff;">${p.brand} ${p.model}</div>
+                        <div style="font-size:0.7rem; color:var(--text-secondary);">ID: #${p.id}</div>
+                    </td>
+                    <td>
+                        <div style="display:flex; gap:4px;">
+                            ${images.map(imgId => `<img src="/api/drive/thumbnail/${imgId}" style="width:40px; height:40px; border-radius:4px; object-fit:cover;">`).join('')}
+                        </div>
+                    </td>
+                    <td><span class="badge" style="background:rgba(16,185,129,0.1); color:#10b981;">${images.length} FOTO</span></td>
+                    <td style="text-align:right;">
+                        <button class="btn glass-btn" onclick="moveToLab(${p.id})">INVIA AL LAB <i class="ph ph-flask"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch(e) {}
+    }
+
+    async function moveToLab(pid) {
+        showToast("🚀 Spostamento in Lab (The Harvester)...");
+        // Logica per cambiare status o altro
+        location.href = '/the-harvester';
+    }
+
+    // Helper per estensione
+    String.prototype.rsplit = function(sep, maxsplit) {
+        var split = this.split(sep);
+        return maxsplit ? [ split.slice(0, -maxsplit).join(sep), split.slice(-maxsplit).join(sep) ] : split;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log("🚀 DOMContentLoaded - Auto-starting sync...");
+        refreshDriveImages();
+    });
+
+    window.onload = function() {
+        if (allImages.length === 0) {
+            console.warn("⚠️ Onload fallback - allImages still empty, retrying...");
+            refreshDriveImages();
+        }
+    };
+</script>
+<!-- FLOATING ACTION BAR (GLOBAL) -->
+<div id="floating-actions" style="position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #ef4444; color: #fff; padding: 14px 28px; border-radius: 50px; display: none; align-items: center; gap: 24px; z-index: 9999; box-shadow: 0 15px 40px rgba(239,68,68,0.5); border: 2px solid rgba(255,255,255,0.2); animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+    <div style="font-weight: 900; font-size: 0.85rem; border-right: 1px solid rgba(255,255,255,0.3); padding-right: 18px; letter-spacing: 1px;">
+        <span id="selected-count-badge">0</span> SELEZIONATI
+    </div>
+    <button id="floating-action-btn" style="background: none; border: none; color: #fff; font-weight: 900; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 10px; text-transform: uppercase; letter-spacing: 1px;">
+        PROCEDI ALLO SVILUPPO <i class="ph ph-arrow-right"></i>
+    </button>
+</div>
+
+{% endblock %}

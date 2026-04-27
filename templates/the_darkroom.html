@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-title">The Darkroom <span id="debug-status" style="font-size:0.8rem; color:var(--accent-gold); margin-left:10px;">(Inizializzazione...)</span></div>
+
+<div class="glass-panel" style="margin-bottom: 32px; padding: 24px; border-left: 4px solid #ef4444; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h2 style="font-weight: 700; font-size: 1.2rem; color: #fff; margin-bottom: 4px;">Sviluppo & Matching Visivo</h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">Browser immagini Drive con motore Sandbox High-Performance.</p>
+    </div>
+    <div style="display: flex; gap: 12px;">
+        <button class="btn attr-primary" onclick="refreshData()" style="background: #ef4444; border-color: #ef4444;">
+            <i class="ph ph-lightning"></i> FORZA SINCRONIZZAZIONE
+        </button>
+    </div>
+</div>
+
+<!-- TABS -->
+<div style="display: flex; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+    <div class="sub-tab active" onclick="setFilter('all')" id="tab-all">TUTTI <span class="badge-count" id="count-all">0</span></div>
+    <div class="sub-tab" onclick="setFilter('raw')" id="tab-raw">DA SVILUPPARE <span class="badge-count" id="count-raw">0</span></div>
+    <div class="sub-tab" onclick="setFilter('pending')" id="tab-pending">DA ASSOCIARE <span class="badge-count" id="count-pending">0</span></div>
+    <div class="sub-tab" onclick="setFilter('completed')" id="tab-completed">COMPLETATI <span class="badge-count" id="count-completed">0</span></div>
+</div>
+
+<div id="image-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;">
+    <!-- Popolated via JS -->
+</div>
+
+<!-- FLOATING ACTIONS BAR -->
+<div id="floating-actions" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #ef4444; color: #fff; padding: 12px 24px; border-radius: 40px; display: none; align-items: center; gap: 20px; z-index: 1000; box-shadow: 0 10px 30px rgba(239,68,68,0.4); border: 2px solid rgba(255,255,255,0.2);">
+    <div style="font-weight: 900; font-size: 0.75rem; letter-spacing: 1px; display: flex; align-items: center; gap: 10px;">
+        <span id="selected-count-badge" style="background: #fff; color: #ef4444; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 0.7rem;">0</span>
+        ASSET SELEZIONATI
+    </div>
+    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.3);"></div>
+    <button id="floating-action-btn" class="btn" style="background: #fff; color: #ef4444; font-size: 0.7rem; font-weight: 800; padding: 6px 16px; border-radius: 20px; border: none; cursor: pointer;">
+        VAI AL MATCHING <i class="ph ph-arrow-right"></i>
+    </button>
+    <button onclick="clearSelection()" style="background: none; border: none; color: #fff; opacity: 0.7; font-size: 0.6rem; cursor: pointer; text-decoration: underline;">Annulla</button>
+</div>
+
+<script src="/static/js/darkroom_core.js"></script>
+
+<script>
+    let selectedImageIds = [];
+
+    async function refreshData() {
+        const grid = document.getElementById('image-grid');
+        const status = document.getElementById('debug-status');
+        
+        status.innerText = "(Scansione Drive...)";
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 100px;"><i class="ph ph-circle-notch ph-spin" style="font-size: 3rem; color: var(--accent-gold);"></i></div>';
+        
+        try {
+            await DarkroomCore.syncDrive(true);
+            updateCounts();
+            renderGrid();
+            status.innerText = `(${DarkroomCore.allImages.length} asset)`;
+        } catch (err) {
+            status.innerText = "(Errore)";
+            grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 100px; color: #ef4444;">Errore: ${err.message}</div>`;
+        }
+    }
+
+    function toggleImageSelection(id) {
+        const idx = selectedImageIds.indexOf(id);
+        if (idx === -1) {
+            selectedImageIds.push(id);
+        } else {
+            selectedImageIds.splice(idx, 1);
+        }
+        updateFloatingBar();
+        renderGrid();
+    }
+
+    function clearSelection() {
+        selectedImageIds = [];
+        updateFloatingBar();
+        renderGrid();
+    }
+
+    function updateFloatingBar() {
+        const bar = document.getElementById('floating-actions');
+        const badge = document.getElementById('selected-count-badge');
+        const actionBtn = document.getElementById('floating-action-btn');
+        const count = selectedImageIds.length;
+        
+        if (count > 0) {
+            bar.style.display = 'flex';
+            badge.innerText = count;
+            
+            // Logica intelligente: controlliamo se ci sono RAW selezionati
+            const selectedImages = DarkroomCore.allImages.filter(img => selectedImageIds.includes(img.id));
+            const hasRaw = selectedImages.some(img => {
+                const name = (img.name || "").toLowerCase();
+                return name.endsWith('.heic') || (img.mimeType || "").includes('heif') || name.endsWith('.png');
+            });
+            
+            if (hasRaw) {
+                actionBtn.innerHTML = 'SVILUPPA ASSET <i class="ph ph-magic-wand"></i>';
+                actionBtn.onclick = () => {
+                    const ids = selectedImageIds.join(',');
+                    window.location.href = `/the-darkroom/convert?ids=${ids}`;
+                };
+            } else {
+                actionBtn.innerHTML = 'VAI AL MATCHING <i class="ph ph-arrow-right"></i>';
+                actionBtn.onclick = () => {
+                    const ids = selectedImageIds.join(',');
+                    window.location.href = `/the-darkroom/matching?ids=${ids}`;
+                };
+            }
+        } else {
+            bar.style.display = 'none';
+        }
+    }
+
+    function setFilter(f) {
+        DarkroomCore.currentFilter = f;
+        document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(`tab-${f}`).classList.add('active');
+        renderGrid();
+    }
+
+    function updateCounts() {
+        const jpgNames = new Set(
+            DarkroomCore.allImages
+                .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
+                .map(img => img.name.split('.')[0].toLowerCase())
+        );
+
+        const counts = {
+            all: DarkroomCore.allImages.length,
+            raw: DarkroomCore.getFilteredImages('raw', jpgNames).length,
+            pending: DarkroomCore.getFilteredImages('pending', jpgNames).length,
+            completed: DarkroomCore.getFilteredImages('completed', jpgNames).length
+        };
+
+        document.getElementById('count-all').innerText = counts.all;
+        document.getElementById('count-raw').innerText = counts.raw;
+        document.getElementById('count-pending').innerText = counts.pending;
+        document.getElementById('count-completed').innerText = counts.completed;
+    }
+
+    function renderGrid() {
+        const grid = document.getElementById('image-grid');
+        grid.innerHTML = '';
+        
+        const jpgNames = new Set(
+            DarkroomCore.allImages
+                .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
+                .map(img => img.name.split('.')[0].toLowerCase())
+        );
+
+        const filtered = DarkroomCore.getFilteredImages(DarkroomCore.currentFilter, jpgNames);
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 100px; color: var(--text-secondary);">Nessun asset in questa categoria.</div>';
+            return;
+        }
+
+        filtered.forEach(img => {
+            const isSelected = selectedImageIds.includes(img.id);
+            const name = (img.name || "").toLowerCase();
+            const isRaw = name.endsWith('.heic') || (img.mimeType || "").includes('heif') || name.endsWith('.png');
+            const isAssociated = img.associated === true;
+            const nameWithoutExt = name.split('.')[0];
+            const alreadyDeveloped = isRaw && jpgNames.has(nameWithoutExt);
+
+            const card = document.createElement('div');
+            card.className = 'glass-panel' + (isSelected ? ' selected' : '');
+            card.style.padding = '10px';
+            card.style.transition = 'all 0.2s';
+            card.style.cursor = 'pointer';
+            card.style.position = 'relative';
+            
+            if (isSelected) {
+                card.style.borderColor = 'var(--accent-gold)';
+                card.style.boxShadow = '0 0 15px rgba(212,175,55,0.2)';
+            }
+            
+            const imgSrc = `/api/drive/proxy/${img.id}`;
+            card.onclick = () => toggleImageSelection(img.id);
+            
+            let badgeHtml = '';
+            if (isAssociated) {
+                badgeHtml = '<div style="position:absolute; top:12px; left:12px; background:#10b981; color:#fff; font-size:0.55rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 5px rgba(0,0,0,0.3);">ASSOCIATO</div>';
+            } else if (alreadyDeveloped) {
+                badgeHtml = '<div style="position:absolute; top:12px; left:12px; background:rgba(255,255,255,0.2); color:#fff; font-size:0.55rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; backdrop-filter:blur(4px);">GIÀ SVILUPPATA</div>';
+            } else if (isRaw) {
+                badgeHtml = '<div style="position:absolute; top:12px; left:12px; background:#ef4444; color:#fff; font-size:0.55rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 5px rgba(0,0,0,0.3);">DA SVILUPPARE</div>';
+            } else {
+                badgeHtml = '<div style="position:absolute; top:12px; left:12px; background:#4285f4; color:#fff; font-size:0.55rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 5px rgba(0,0,0,0.3);">DA ASSOCIARE</div>';
+            }
+
+            card.innerHTML = `
+                ${badgeHtml}
+                <div style="width:100%; aspect-ratio:1; overflow:hidden; border-radius:8px; background:#000; margin-bottom:10px;">
+                    <img src="${imgSrc}" loading="lazy" style="width:100%; height:100%; object-fit:cover; opacity: ${isAssociated || alreadyDeveloped ? '0.5' : '1'}">
+                </div>
+                ${isSelected ? '<div style="position:absolute; top:15px; right:15px; background:var(--accent-gold); color:#000; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:900; z-index:10;"><i class="ph ph-check"></i></div>' : ''}
+                <div style="font-size: 0.65rem; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${img.name}</div>
+                <div style="font-size: 0.55rem; color: var(--text-secondary); margin-top: 4px;">${(img.size / 1024 / 1024).toFixed(2)} MB</div>
+            `;
+            
+            grid.appendChild(card);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', refreshData);
+</script>
+
+<style>
+.sub-tab { 
+    font-size: 0.7rem; 
+    font-weight: 800; 
+    color: var(--text-secondary); 
+    padding: 8px 16px; 
+    border-radius: 6px; 
+    background: rgba(255,255,255,0.03); 
+    border: 1px solid rgba(255,255,255,0.05); 
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.sub-tab:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+}
+.sub-tab.active { 
+    color: var(--accent-gold); 
+    background: rgba(212,175,55,0.1); 
+    border-color: rgba(212,175,55,0.2); 
+}
+.badge-count {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.6rem;
+}
+.sub-tab.active .badge-count {
+    background: var(--accent-gold);
+    color: #000;
+}
+</style>
+{% endblock %}
