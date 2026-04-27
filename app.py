@@ -939,7 +939,8 @@ async def shopify_mirror(request: Request, db: Session = Depends(get_db)):
 async def get_shopify_catalog():
     from shopify_bridge import ShopifyBridge
     bridge = ShopifyBridge()
-    return await bridge.fetch_shopify_catalog()
+    products = await bridge.sync_catalog_with_shopify()
+    return {"status": "ok", "products": products}
 
 @app.post("/api/product/update/{product_id}")
 async def update_product(product_id: int, request: Request, db: Session = Depends(get_db)):
@@ -2341,17 +2342,19 @@ def save_muse_description(product_id: int, payload: MuseSaveData, db: Session = 
     return {"status": "ok"}
 
 
+from typing import Optional
+
 @app.post("/api/settings/keys")
 def save_keys(
     request: Request, 
-    openai: str = Form(""),
-    anthropic: str = Form(""),
-    gemini: str = Form(""),
-    serper: str = Form(""),
-    shopify_token: str = Form(""),
-    shopify_url: str = Form(""),
-    shopify_client_id: str = Form(""),
-    shopify_client_secret: str = Form(""),
+    openai: Optional[str] = Form(None),
+    anthropic: Optional[str] = Form(None),
+    gemini: Optional[str] = Form(None),
+    serper: Optional[str] = Form(None),
+    shopify_token: Optional[str] = Form(None),
+    shopify_url: Optional[str] = Form(None),
+    shopify_client_id: Optional[str] = Form(None),
+    shopify_client_secret: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     # Pulizia Shopify URL (rimozione https:// e slash finali)

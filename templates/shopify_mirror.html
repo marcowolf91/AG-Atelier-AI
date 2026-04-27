@@ -94,41 +94,59 @@ function renderCatalog(products) {
     }
 
     let html = `
-        <div style="display: grid; grid-template-columns: 80px 2fr 1fr 1fr 1fr auto; gap: 16px; padding: 0 24px 12px; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+        <div style="display: grid; grid-template-columns: 60px 2.5fr 1fr 1fr 1.5fr 1fr auto; gap: 16px; padding: 0 24px 12px; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
             <div>Media</div>
-            <div>Identificativo Shopify</div>
-            <div>Codice SKU</div>
-            <div>Listino Live</div>
-            <div>Stato Sincronia</div>
+            <div>Prodotto</div>
+            <div>Stato</div>
+            <div>Scorte</div>
+            <div>Categoria</div>
+            <div>Sincronia</div>
             <div style="text-align:right;">Gestione</div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 8px;">
     `;
 
     products.forEach(p => {
-        let syncStatus = p.sku.includes('DIF') ? 'divergent' : (Math.random() > 0.5 ? 'matched' : 'new');
+        let safeSku = p.sku || 'N/A';
+        let safeTitle = p.title || 'Senza Nome';
+        let syncStatus = safeSku.includes('DIF') ? 'divergent' : (Math.random() > 0.5 ? 'matched' : 'new');
         let badgeType = syncStatus === 'matched' ? 'ready' : (syncStatus === 'divergent' ? 'warn' : 'processing');
         let icon = syncStatus === 'matched' ? 'check-circle' : (syncStatus === 'divergent' ? 'warning' : 'sparkle');
         let label = syncStatus === 'matched' ? 'ALLINEATO' : (syncStatus === 'divergent' ? 'DIVERGENTE' : 'SOLO CLOUD');
 
+        // Traduzione e Colore Stato Shopify
+        let shopifyStatusText = p.status === 'ACTIVE' ? 'Attivo' : (p.status === 'DRAFT' ? 'Bozza' : p.status);
+        let shopifyStatusBadge = p.status === 'ACTIVE' ? 'background: rgba(16, 185, 129, 0.2); color: #10b981;' : 'background: rgba(255, 255, 255, 0.1); color: #fff;';
+
         html += `
-            <div class="glass-panel mirror-item" style="padding: 16px 24px; display: grid; grid-template-columns: 80px 2fr 1fr 1fr 1fr auto; gap: 16px; align-items: center;">
+            <div class="glass-panel mirror-item" style="padding: 16px 24px; display: grid; grid-template-columns: 60px 2.5fr 1fr 1fr 1.5fr 1fr auto; gap: 16px; align-items: center;">
                 <div style="width: 50px; height: 50px; border-radius: 8px; background: rgba(255,255,255,0.05); overflow:hidden; border: 1px solid var(--glass-border);">
-                    ${p.image ? `<img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">` : `<i class="ph ph-shopping-bag" style="font-size:1.5rem; color:#222;"></i>`}
+                    ${p.image ? `<img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">` : `<i class="ph-duotone ph-image" style="font-size:1.5rem; color:#444; display:block; margin: 12px auto; text-align:center;"></i>`}
                 </div>
                 <div>
-                    <div style="font-weight: 700; color:#fff; font-size:0.9rem;">${p.title}</div>
-                    <div style="font-size:0.7rem; color:var(--text-secondary);">Shopify ID: ${p.id}</div>
+                    <div style="font-weight: 700; color:#fff; font-size:0.95rem; margin-bottom: 4px;">${safeTitle}</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">
+                        ${safeSku !== 'N/A' ? '<i class="ph ph-barcode"></i> SKU: ' + safeSku : '<i class="ph ph-link"></i> Shopify ID: ' + p.id.split('/').pop()}
+                    </div>
                 </div>
-                <div style="font-family: monospace; font-size:0.8rem; color:var(--accent-gold);">${p.sku}</div>
-                <div style="font-weight: 700; color:#fff;">€ ${p.price}</div>
+                <div>
+                    <span style="padding: 4px 10px; border-radius: 12px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; ${shopifyStatusBadge}">
+                        ${shopifyStatusText}
+                    </span>
+                </div>
+                <div style="font-weight: 700; font-size: 0.85rem; color: ${p.inventory > 0 ? '#10b981' : '#ef4444'};">
+                    ${p.inventory} disponibili
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); text-transform: capitalize;">
+                    ${p.product_type}
+                </div>
                 <div>
                     <span class="badge ${badgeType}" style="font-size: 0.6rem;">
                         <i class="ph ph-${icon}"></i> ${label}
                     </span>
                 </div>
                 <div style="text-align: right;">
-                    <button onclick="handleImport('${p.sku}', '${p.title.replace(/'/g, "\\'")}', ${p.price}, '${syncStatus}')" class="btn glass-btn" style="padding: 8px 16px; font-size: 0.75rem;">
+                    <button onclick="handleImport('${safeSku}', '${safeTitle.replace(/'/g, "\\'")}', ${p.price || 0}, '${syncStatus}')" class="btn glass-btn" style="padding: 8px 16px; font-size: 0.75rem;">
                         <i class="ph ph-download-simple"></i> Importa
                     </button>
                 </div>

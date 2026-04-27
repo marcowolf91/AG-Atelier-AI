@@ -115,15 +115,114 @@ class ShopifyBridge:
 
     async def sync_catalog_with_shopify(self):
         """
-        Simulazione recupero catalogo da Shopify
+        Recupero catalogo da Shopify via GraphQL
         """
         add_bridge_log("Avvio scansione del catalogo online Shopify...")
-        # Mock data per ora (nella realtà userebbe shopify.graphql)
-        return [
-            {"title": "Chanel Boy Bag", "sku": "CH-001", "price": "4500.00", "status": "ACTIVE"},
-            {"title": "Louis Vuitton Speedy 30", "sku": "LV-300", "price": "1200.00", "status": "ACTIVE"},
-            {"title": "Gucci GG Marmont", "sku": "GU-452", "price": "2100.00", "status": "DRAFT"}
-        ]
+        
+        results = []
+        
+        # 1. Recupero VERO catalogo Shopify
+        if self.token and self.api_url:
+            query = """
+            query {
+              products(first: 50) {
+                edges {
+                  node {
+                    id
+                    title
+                    status
+                    totalInventory
+                    productType
+                    variants(first: 1) {
+                      edges {
+                        node {
+                          sku
+                          price
+                        }
+                      }
+                    }
+                    images(first: 1) {
+                      edges {
+                        node {
+                          url
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+            headers = {
+                "X-Shopify-Access-Token": self.token,
+                "Content-Type": "application/json"
+            }
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                try:
+                    resp = await client.post(self.api_url, json={"query": query}, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        edges = data.get("data", {}).get("products", {}).get("edges", [])
+                        for edge in edges:
+                            node = edge.get("node", {})
+                            
+                            sku = "N/A"
+                            price = "0.00"
+                            if node.get("variants") and node["variants"].get("edges"):
+                                vnode = node["variants"]["edges"][0].get("node", {})
+                                sku = vnode.get("sku", "N/A")
+                                price = vnode.get("price", "0.00")
+                                
+                            img_url = None
+                            if node.get("images") and node["images"].get("edges"):
+                                img_url = node["images"]["edges"][0].get("node", {}).get("url")
+                                
+                            results.append({
+                                "id": node.get("id"),
+                                "title": node.get("title", ""),
+                                "sku": sku,
+                                "price": price,
+                                "status": node.get("status", "ACTIVE"),
+                                "image": img_url,
+                                "inventory": node.get("totalInventory", 0),
+                                "product_type": node.get("productType", "Non categorizzato") or "Non categorizzato"
+                            })
+                        add_bridge_log(f"✅ Recuperati {len(edges)} prodotti da Shopify.")
+                    else:
+                        add_bridge_log(f"❌ Errore Shopify ({resp.status_code}): {resp.text}")
+                except Exception as e:
+                    add_bridge_log(f"❌ Eccezione durante fetch catalogo: {str(e)}")
+        
+        # 2. Aggiungiamo i prodotti "Pubblicati" nel DB locale (se non sono già su Shopify)
+        db = SessionLocal()
+        published_items = db.query(Product).filter(Product.status == ProductStatus.Published).all()
+        existing_skus = {r.get("sku") for r in results if r.get("sku")}
+        
+        for p in published_items:
+            if p.sku and p.sku in existing_skus:
+                continue # Evita duplicato
+                
+            img = None
+            if p.matched_images_json:
+                try:
+                    imgs = json.loads(p.matched_images_json)
+                    if imgs and len(imgs) > 0: 
+                        img = f"/api/drive/proxy/{imgs[0]}"
+                except: pass
+            
+            results.append({
+                "id": f"gid://shopify/Product/Local-{p.id}",
+                "title": p.seo_title or f"{p.brand} {p.model}",
+                "sku": p.sku or f"SKU-{p.id}",
+                "price": str(p.price) if p.price else "0.00",
+                "status": "LOCAL ONLY",
+                "image": img,
+                "inventory": 1,
+                "product_type": p.category or "Non categorizzato"
+            })
+        db.close()
+
+        return results
 
     async def import_product_to_pim(self, shopify_data: dict, mode: str = "standard"):
         """
