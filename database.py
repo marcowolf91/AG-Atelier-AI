@@ -1,14 +1,25 @@
 import enum
 import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Enum as SQLEnum, Text, Float, DateTime
+import os
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, Integer, String, Enum as SQLEnum, Text, Float, DateTime, func
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./atelier_ai.db"
+load_dotenv()
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# Priorità alla DATABASE_URL di Supabase, fallback su SQLite locale
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./atelier_ai.db")
+
+# Per Postgres (Supabase) dobbiamo assicurarci che la stringa inizi con postgresql://
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine_args = {}
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine_args = {"connect_args": {"check_same_thread": False}}
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, **engine_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -62,6 +73,8 @@ class Product(Base):
     cost_price = Column(Float, nullable=True) # Sede Costo
     
     dimensions = Column(String, nullable=True)
+    size = Column(String, nullable=True) # Taglia Scarpe / Misura
+    fit = Column(String, nullable=True) # Calzata / Vestibilità
     handle_drop = Column(String, nullable=True) # Luce Manici/Tracolla
     accessories_included = Column(String, nullable=True) # Corredo Incluso
     location = Column(String, nullable=True) # Sede
@@ -106,6 +119,14 @@ class GlobalTagGovernance(Base):
     tag_name = Column(String, unique=True, index=True)
     status = Column(String, default="Standard") # Standard, Blacklisted, Certified
     replacement_tag = Column(String, nullable=True) # Per auto-rename
+
+class ApiUsage(Base):
+    __tablename__ = "api_usage"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    service_name = Column(String, unique=True, index=True) # e.g. "serper", "openai"
+    total_hits = Column(Integer, default=0)
+    last_used = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Setting(Base):
     __tablename__ = "settings"

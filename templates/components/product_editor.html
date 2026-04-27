@@ -27,8 +27,23 @@
             </div>
             
             <div class="input-group">
-                <label>SKU</label>
-                <input type="text" id="edit-sku" class="glass-input">
+                <label id="label-size">Taglia / Misura</label>
+                <input type="text" id="edit-size" class="glass-input" placeholder="es. 42 o 30x20x10">
+            </div>
+
+            <div class="input-group">
+                <label>Calzata / Fit</label>
+                <input type="text" id="edit-fit" class="glass-input" placeholder="es. Regolare, Over...">
+            </div>
+
+            <div class="input-group">
+                <label>Condizioni</label>
+                <input type="text" id="edit-condition" class="glass-input" placeholder="es. Pari al Nuovo, Ottimo...">
+            </div>
+
+            <div class="input-group">
+                <label>Corredo Incluso</label>
+                <input type="text" id="edit-accessories" class="glass-input" placeholder="es. Dustbag, Box, Ricevuta...">
             </div>
             
             <div class="input-group">
@@ -113,7 +128,7 @@
             document.getElementById('edit-product-id').value = productId;
 
             // Reset campi per evitare di vedere dati vecchi (usiamo placeholders finché non carica)
-            const fields = ['edit-brand', 'edit-model', 'edit-sku', 'edit-price', 'edit-tags', 'edit-seo-title', 'edit-description', 'edit-type'];
+            const fields = ['edit-brand', 'edit-model', 'edit-size', 'edit-fit', 'edit-condition', 'edit-accessories', 'edit-price', 'edit-tags', 'edit-seo-title', 'edit-description', 'edit-type'];
             fields.forEach(f => {
                 const el = document.getElementById(f);
                 if(el) {
@@ -144,7 +159,10 @@
                     const map = {
                         'edit-brand': p.brand,
                         'edit-model': p.model,
-                        'edit-sku': p.sku,
+                        'edit-size': p.size || p.dimensions,
+                        'edit-fit': p.fit,
+                        'edit-condition': p.condition_grade,
+                        'edit-accessories': p.accessories_included,
                         'edit-price': p.price,
                         'edit-tags': p.tags,
                         'edit-seo-title': p.seo_title,
@@ -158,6 +176,7 @@
                             el.value = val !== null && val !== undefined ? val : '';
                             if(id === 'edit-type') el.placeholder = 'es. Scarpe, Borsa, Cintura';
                             else if(id === 'edit-description') el.placeholder = 'Descrizione dettagliata del prodotto...';
+                            else if(id === 'edit-size') el.placeholder = 'Taglia o Dimensioni';
                             else el.placeholder = '';
                         }
                     });
@@ -188,7 +207,11 @@ async function saveProductChanges(e) {
         category: document.getElementById('edit-type').value,
         brand: document.getElementById('edit-brand').value,
         model: document.getElementById('edit-model').value,
-        sku: document.getElementById('edit-sku').value,
+        size: document.getElementById('edit-size').value,
+        fit: document.getElementById('edit-fit').value,
+        condition_grade: document.getElementById('edit-condition').value,
+        accessories_included: document.getElementById('edit-accessories').value,
+        dimensions: document.getElementById('edit-size').value, 
         price: document.getElementById('edit-price').value,
         category_id: document.getElementById('edit-gov-cat').value,
         tags: document.getElementById('edit-tags').value,

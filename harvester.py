@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import httpx
-from database import SessionLocal, Product, ProductStatus
+from database import SessionLocal, Product, ProductStatus, ApiUsage
 from auth_manager import get_api_key, get_raw_api_key
 import google_auth
 from googleapiclient.discovery import build
@@ -19,26 +19,43 @@ class HarvesterEngine:
         self.serper_key = get_raw_api_key("serper")
         self.openai_key = get_raw_api_key("openai")
 
+    def log_api_hit(self, service: str):
+        """Registra un utilizzo di un'API nel database."""
+        db = SessionLocal()
+        try:
+            usage = db.query(ApiUsage).filter(ApiUsage.service_name == service).first()
+            if not usage:
+                usage = ApiUsage(service_name=service, total_hits=1)
+                db.add(usage)
+            else:
+                usage.total_hits += 1
+                usage.last_used = datetime.datetime.utcnow()
+            db.commit()
+        except: pass
+        finally: db.close()
+
     @staticmethod
     def calculate_integrity(item):
         """Calcola il punteggio di integrità Shopify-Ready (0-100)"""
         score = 0
         
-        # Fondamentali (15% ciascuno)
-        if item.price and item.price > 0: score += 15
-        if item.condition_grade and item.condition_grade.strip(): score += 15
-        if item.seo_title and item.seo_title.strip(): score += 15
+        # Dati Master (50% totale)
+        if item.price and item.price > 0: score += 10
+        if item.condition_grade and item.condition_grade.strip(): score += 10
+        if item.accessories_included and item.accessories_included.strip(): score += 10
+        if (item.dimensions and item.dimensions.strip()) or (item.size and item.size.strip()): score += 10
+        if item.fit and item.fit.strip(): score += 10
+        
+        # Arricchimento AI (40% totale)
+        if item.seo_title and item.seo_title.strip(): score += 10
         if item.ai_description_it and item.ai_description_it.strip(): score += 15
-        if item.tags and item.tags.strip(): score += 15
+        if item.tags and item.tags.strip(): score += 10
+        if (item.material and item.material.strip()) or (item.color and item.color.strip()): score += 5
         
-        # Tecnici (10% ciascuno)
-        if item.material and item.material.strip(): score += 10
-        if item.dimensions and item.dimensions.strip(): score += 10
+        # Assets (10%)
+        if item.matched_images_json and item.matched_images_json != "[]": score += 10
         
-        # Opzionali (5%)
-        if item.color and item.color.strip(): score += 5
-        
-        return float(score)
+        return float(min(score, 100))
 
     async def get_preview(self, item: Product, action: str = "all"):
         """Genera un'anteprima dei dati senza salvarli nel DB."""
@@ -59,6 +76,7 @@ class HarvesterEngine:
                     try:
                         headers = {'X-API-KEY': self.serper_key, 'Content-Type': 'application/json'}
                         resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": query, "num":3})
+                        self.log_api_hit("serper")
                         res_data = resp.json()
                         snippets = [o['snippet'] for o in res_data.get('organic', [])]
                         combined = "\n".join(snippets)
@@ -280,6 +298,7 @@ class HarvesterEngine:
                 headers = {'X-API-KEY': self.serper_key, 'Content-Type': 'application/json'}
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": query})
+                    self.log_api_hit("serper")
                     if resp.status_code == 200:
                         snippets = [o['snippet'] for o in resp.json().get('organic', [])]
             
@@ -443,6 +462,7 @@ class HarvesterEngine:
                     if self.serper_key:
                         headers = {'X-API-KEY': self.serper_key, 'Content-Type': 'application/json'}
                         resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": q, "num": 5})
+                        self.log_api_hit("serper")
                         if resp.status_code == 200:
                             all_snippets.extend([o['snippet'] for o in resp.json().get('organic', [])])
             

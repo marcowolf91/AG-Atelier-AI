@@ -24,7 +24,8 @@ class SyncEngine:
             "condition": ["condition", "condizioni", "condiz", "grado", "rank"],
             "price": ["price", "prezzo", "amount", "valore", "listing price", "costo", "vendita", "sell price", "listino"],
             "size": ["size", "taglia", "misura", "numero", "lunghezza", "width"],
-            "serial": ["serial", "seriale", "barcode", "sku", "codice", "barcode", "upc", "ean"]
+            "serial": ["serial", "seriale", "barcode", "sku", "codice", "barcode", "upc", "ean"],
+            "fit": ["calzata", "vestibilità", "vestibilita", "fit"]
         }
 
     def normalize_field(self, val, field_type=None):
@@ -174,6 +175,7 @@ class SyncEngine:
                     # Altri campi opzionali se presenti nel loop
                     idx_cond, idx_acc, idx_hard = m_cond, m_acc, m_hard
                     idx_dim, idx_drop, idx_loc = m_dim, m_drop, m_loc
+                    idx_fit = None
                     add_log(f"📍 [The Loom] Intestazione rilevata alla riga {r_idx + 1} ('{target_sheet_name}').")
                     break
             
@@ -191,9 +193,10 @@ class SyncEngine:
                 if idx_cond is None and match_header(h_low, 'condition', self.mapping['condition']): idx_cond = i
                 if idx_acc is None and match_header(h_low, 'acc', ['corredo', 'accessor', 'kit']): idx_acc = i
                 if idx_hard is None and match_header(h_low, 'hw', ['hardware', 'metallo', 'oro', 'argento']): idx_hard = i
-                if idx_dim is None and match_header(h_low, 'dim', ['misure', 'dimensioni', 'dimens']): idx_dim = i
+                if idx_dim is None and match_header(h_low, 'dim', ['misure', 'dimensioni', 'dimens', 'size', 'taglia', 'misura', 'numero']): idx_dim = i
                 if idx_drop is None and match_header(h_low, 'drop', ['luce', 'drop']): idx_drop = i
                 if idx_loc is None and match_header(h_low, 'loc', ['sede', 'magazzino']): idx_loc = i
+                if idx_fit is None and match_header(h_low, 'fit', self.mapping['fit']): idx_fit = i
 
             imported_count = 0
             updated_count = 0
@@ -245,7 +248,7 @@ class SyncEngine:
                         "material": idx_mat, "color": idx_col, "condition_grade": idx_cond,
                         "accessories_included": idx_acc, "hardware_type": idx_hard,
                         "dimensions": idx_dim, "handle_drop": idx_drop, "location": idx_loc,
-                        "size": idx_size, "serial_number": idx_serial
+                        "size": idx_size, "serial_number": idx_serial, "fit": idx_fit
                     }
                     for field, idx in idx_map.items():
                         if idx is not None and idx < len(padded): 
@@ -273,10 +276,12 @@ class SyncEngine:
                     idx_map = {
                         "material": idx_mat, "color": idx_col, "condition_grade": idx_cond,
                         "accessories_included": idx_acc, "hardware_type": idx_hard,
-                        "dimensions": idx_dim, "handle_drop": idx_drop, "location": idx_loc
+                        "dimensions": idx_dim, "handle_drop": idx_drop, "location": idx_loc,
+                        "size": idx_size, "serial_number": idx_serial, "fit": idx_fit
                     }
                     for field, idx in idx_map.items():
-                        if idx is not None: incoming_data[field] = self.normalize_field(padded[idx], field)
+                        if idx is not None and idx < len(padded): 
+                            incoming_data[field] = self.normalize_field(padded[idx], field)
                     
                     # Carichiamo vecchio snapshot
                     old_snap = {}
@@ -303,12 +308,16 @@ class SyncEngine:
                         exists.has_master_conflict = 1
                         exists.master_snapshot_json = json.dumps(incoming_data)
                         
+                        # AUTO-FILL: Se i campi attuali sono vuoti, li popoliamo subito senza aspettare approvazione
+                        for key, val in incoming_data.items():
+                            current_val = getattr(exists, key, None)
+                            if not current_val and val:
+                                setattr(exists, key, val)
+                                print(f"✨ [Auto-Fill] {exists.brand} {exists.model} -> {key}: {val}")
+                        
                         # Recalculate integrity for the "would-be" state if applied
                         try:
                             from harvester import HarvesterEngine
-                            # Temporarily simulate the new data for score calculation
-                            # (Optional: we could just wait for the user to apply, but seeing 
-                            # the score impact might be useful)
                             exists.match_confidence = HarvesterEngine.calculate_integrity(exists)
                         except: pass
                         

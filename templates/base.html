@@ -163,6 +163,10 @@
 
             <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--glass-border);">
                 <div class="system-status-pill glass-panel" style="background: rgba(0,0,0,0.3) !important; border:none !important; border-radius: 12px; padding: 12px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 0.55rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">SERPER HITS</span>
+                        <span id="serper-count" style="font-size: 0.7rem; font-weight: 800; color: var(--accent-gold);">--</span>
+                    </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <div class="status-led green"></div>
                         <span style="font-size: 0.65rem; font-weight: 800; color: #fff; letter-spacing: 1px;">CORE_SECURE</span>
@@ -372,5 +376,20 @@
         @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
     </style>
 
+    <script>
+        // System Usage Polling
+        async function updateUsage() {
+            try {
+                const res = await fetch('/api/system/usage');
+                const data = await res.json();
+                if(data.serper !== undefined) {
+                    const el = document.getElementById('serper-count');
+                    if(el) el.innerText = data.serper;
+                }
+            } catch(e) {}
+        }
+        updateUsage();
+        setInterval(updateUsage, 30000); // Ogni 30 secondi
+    </script>
 </body>
 </html>

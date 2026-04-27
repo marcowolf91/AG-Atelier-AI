@@ -54,7 +54,10 @@
 <div class="glass-panel" style="margin-bottom: 32px; padding: 20px; display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 16px; align-items: center;">
     <div style="position: relative;">
         <i class="ph ph-magnifying-glass" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
-        <input type="text" id="filter-q" value="{{ filter_q }}" class="glass-input" placeholder="Cerca Brand, SKU, Modello..." style="padding-left: 48px; width: 100%; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--glass-border);">
+        <input type="text" id="filter-q" value="{{ filter_q }}" class="glass-input" placeholder="Cerca Brand, SKU, Modello..." 
+               onkeyup="if(event.key === 'Enter') applyFilters()"
+               oninput="liveFilterLoom(this.value)"
+               style="padding-left: 48px; width: 100%; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--glass-border);">
     </div>
     
     <select id="filter-brand" class="glass-input" style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; padding: 10px; border-radius: 12px;">
@@ -181,6 +184,14 @@
 </style>
 
 <script>
+    function liveFilterLoom(term) {
+        const lowerTerm = term.toLowerCase();
+        document.querySelectorAll('.loom-item').forEach(item => {
+            const text = item.innerText.toLowerCase();
+            item.style.display = text.includes(lowerTerm) ? 'grid' : 'none';
+        });
+    }
+
     function updateSelectionUI() {
         const checked = document.querySelectorAll('.product-checkbox:checked');
         const batchEl = document.getElementById('batch-actions');

@@ -57,17 +57,28 @@
 
         <div class="tinder-card {% if loop.index0 == 0 %}front{% elif loop.index0 == 1 %}behind{% else %}hidden{% endif %}" data-id="{{ item.id }}" id="card-{{ loop.index0 }}">
             
-            <!-- Card Header -->
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
-                <div style="flex: 1;">
-                    <div style="font-size: 0.7rem; font-weight: 800; color: var(--accent-gold); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;">{{ item.brand or 'Articolo Neutro' }}</div>
-                    <div style="font-size: 1.6rem; font-weight: 800; color: #fff; line-height: 1.2;">{{ item.model or 'Modello da Identificare' }}</div>
+                <div>
+                    <div style="font-size: 0.7rem; color: var(--accent-gold); font-weight: 800; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px;">{{ item.brand or 'BRAND SCONOSCIUTO' }}</div>
+                    <h1 style="font-size: 2.2rem; font-weight: 900; color: #fff; line-height: 1; letter-spacing: -1px;">{{ item.model or 'MODELLO SENZA NOME' }}</h1>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 1.4rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">€ {{ item.price or '0' }}</div>
-                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-top: 8px;">
-                        {% if not item.price or item.price == 0 %}<span class="audit-flag alert">MISSING_PRICE</span>{% endif %}
-                        {% if not imgs or imgs|length == 0 %}<span class="audit-flag critical">NO_ASSETS</span>{% endif %}
+                <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 12px;">
+                    <div style="font-size: 1.8rem; font-weight: 800; color: #fff;">€ {{ item.price or '0.00' }}</div>
+                    <div style="display: flex; gap: 8px;">
+                        {% set prev_idx = loop.index0 - 1 %}
+                        {% set next_idx = loop.index0 + 1 %}
+                        
+                        <button onclick="switchSpotlight({{ products[prev_idx].id if prev_idx >= 0 else 'null' }})" class="btn glass-btn" style="width: 40px; height: 40px; justify-content: center; padding: 0; {% if prev_idx < 0 %}opacity: 0.2; pointer-events: none;{% endif %}">
+                            <i class="ph ph-caret-left" style="font-size: 1.2rem;"></i>
+                        </button>
+                        
+                        <div style="height: 40px; display: flex; align-items: center; padding: 0 12px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 0.7rem; font-weight: 800; color: var(--text-secondary);">
+                            {{ loop.index }} / {{ products|length }}
+                        </div>
+
+                        <button onclick="switchSpotlight({{ products[next_idx].id if next_idx < products|length else 'null' }})" class="btn glass-btn" style="width: 40px; height: 40px; justify-content: center; padding: 0; {% if next_idx >= products|length %}opacity: 0.2; pointer-events: none;{% endif %}">
+                            <i class="ph ph-caret-right" style="font-size: 1.2rem;"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -87,19 +98,24 @@
                 </div>
                 
                 <div style="display: flex; flex-direction: column; gap: 16px;">
-                    <div class="glass-panel" style="flex: 1; padding: 16px; font-size: 0.8rem; line-height: 1.6; overflow-y: auto; background: rgba(0,0,0,0.2);">
-                        <div style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                            <i class="ph-duotone ph-sparkle"></i> AI GENERATED NARRATIVE
+                    <div class="glass-panel" style="flex: 1; padding: 16px; font-size: 0.8rem; line-height: 1.6; overflow: hidden; display: flex; flex-direction: column; background: rgba(0,0,0,0.2);">
+                        <div style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="display: flex; align-items: center; gap: 8px;"><i class="ph-duotone ph-sparkle"></i> AI NARRATIVE</span>
+                            <button onclick="regenerateAI(event, {{ item.id }}, 'desc')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA ORA</button>
                         </div>
-                        <div style="color: rgba(255,255,255,0.8);">{{ item.ai_description_it or 'Generazione in corso...' }}</div>
+                        <div id="desc-text-{{ item.id }}" style="color: rgba(255,255,255,0.4); flex: 1; overflow-y: auto; font-style: italic;">{{ item.ai_description_it or 'In attesa di generazione... Clicca "GENERA ORA" per iniziare.' }}</div>
                     </div>
                     
-                    <div style="display: flex; gap: 8px; height: 80px;">
-                        {% for g_id in imgs[1:4] %}
-                        <div class="glass-panel" style="flex: 1; padding: 0; overflow: hidden; position:relative;">
-                            <img src="/api/drive/proxy/{{ g_id }}" style="width: 100%; height: 100%; object-fit: cover;">
-                            <div style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.5rem; padding:1px 4px; border-radius:2px;">{{ loop.index + 1 }}</div>
-                        </div>
+                    <div style="display: flex; gap: 8px; height: 80px; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
+                        {% set gallery_imgs = item.matched_images_json|from_json if item.matched_images_json else [] %}
+                        {% for i in range(1, gallery_imgs|length) %}
+                            {% set current_thumb = gallery_imgs[i] %}
+                            {% if current_thumb and current_thumb|length > 10 %}
+                            <div class="glass-panel" style="flex: 0 0 80px; width: 80px; height: 80px; padding: 0; overflow: hidden; position:relative; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05);">
+                                <img src="/api/drive/proxy/{{ current_thumb }}" style="width: 100%; height: 100%; object-fit: cover;">
+                                <div style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.5rem; padding:1px 4px; border-radius:2px;">{{ i + 1 }}</div>
+                            </div>
+                            {% endif %}
                         {% endfor %}
                     </div>
                 </div>
@@ -120,14 +136,23 @@
                     <input type="text" class="glass-input" id="col-{{ item.id }}" value="{{ item.color or '' }}" style="width: 100%; font-size: 0.8rem;">
                 </div>
                 <div class="input-group">
-                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Dimensioni</label>
-                    <input type="text" class="glass-input" id="dim-{{ item.id }}" value="{{ item.dimensions or '' }}" style="width: 100%; font-size: 0.8rem;">
+                    {% set is_shoe = 'scarpe' in (item.category|lower if item.category else '') or 'scarpe' in (item.tags|lower if item.tags else '') %}
+                    <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">
+                        {% if is_shoe %}Taglia (EU){% else %}Dimensioni (cm){% endif %}
+                    </label>
+                    <input type="text" class="glass-input" id="dim-{{ item.id }}" value="{{ item.dimensions or (item.size if is_shoe else '') }}" placeholder="es. 42 o 30x20x10" style="width: 100%; font-size: 0.8rem;">
+                    {% if item.fit %}
+                    <div style="margin-top: 4px; font-size: 0.6rem; color: var(--accent-gold); font-weight: 600;">CALZATA: {{ item.fit }}</div>
+                    {% endif %}
                 </div>
             </div>
 
             <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 24px;">
                 <div class="input-group">
-                    <label style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase; margin-bottom: 6px; display: block;">Titolo SEO Certificato</label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase;">Titolo SEO Certificato</label>
+                        <button onclick="regenerateAI(event, {{ item.id }}, 'title')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA CON AI</button>
+                    </div>
                     <input type="text" class="glass-input" id="seo-{{ item.id }}" value="{{ item.seo_title or '' }}" style="width: 100%; font-size: 1.1rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.03); border-left: 4px solid var(--accent-gold);">
                 </div>
                 <div class="input-group">
@@ -145,7 +170,7 @@
                         <option value="openai">GPT-4o (OpenAI Cloud)</option>
                     </select>
                 </div>
-                <button onclick="regenerateAI({{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
+                <button onclick="regenerateAI(event, {{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
                     <i class="ph-duotone ph-magic-wand"></i>
                 </button>
                 <button onclick="deepResearch({{ item.id }})" id="btn-res-{{ item.id }}" class="btn attr-primary" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Web Intelligence Research">
@@ -314,27 +339,50 @@
         }
     }
 
-    async function regenerateAI(pid) {
-        const btn = document.getElementById(`btn-reg-${pid}`);
-        const model = document.getElementById(`model-${pid}`).value;
-        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
-        btn.disabled = true;
+    async function regenerateAI(event, pid, target = 'all') {
+        const btn = event ? event.currentTarget : document.getElementById(`btn-reg-${pid}`);
+        const oldHtml = btn.innerHTML;
+        const modelEl = document.getElementById(`model-${pid}`);
+        const model = modelEl ? modelEl.value : "llama3";
+        
+        if(btn) {
+            btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            btn.disabled = true;
+        }
+        showToast(`🤖 AI in azione (${target})...`);
 
         try {
             const res = await fetch(`/api/lab/regenerate/${pid}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ model: model })
+                body: JSON.stringify({ model: model, target: target })
             });
             const data = await res.json();
             if(data.status === 'ok') {
-                document.getElementById(`seo-${pid}`).value = data.seo_title;
-                showToast("🤖 Re-Boost completato.");
+                if(target === 'title' || target === 'all') {
+                    const seoInput = document.getElementById(`seo-${pid}`);
+                    if(seoInput && data.seo_title) seoInput.value = data.seo_title;
+                }
+                if(target === 'desc' || target === 'all') {
+                    const descBox = document.getElementById(`desc-text-${pid}`);
+                    if(descBox && data.ai_description_it) {
+                        descBox.innerText = data.ai_description_it;
+                        descBox.style.color = "var(--accent-gold)";
+                        setTimeout(() => { descBox.style.color = "rgba(255,255,255,0.8)"; }, 2000);
+                    }
+                }
+                showToast("🤖 Generazione completata.");
+            } else {
+                showToast("⚠️ L'AI non ha risposto correttamente.");
             }
-        } catch(e) { showToast("Errore AI Re-Boost."); }
-        finally {
-            btn.innerHTML = '<i class="ph-duotone ph-magic-wand"></i>';
-            btn.disabled = false;
+        } catch(e) { 
+            console.error(e);
+            showToast("❌ Errore di connessione."); 
+        } finally {
+            if(btn) {
+                btn.innerHTML = oldHtml;
+                btn.disabled = false;
+            }
         }
     }
 
@@ -377,15 +425,30 @@
 
     // Keyboard Shortcuts
     document.addEventListener('keydown', (e) => {
-        if(e.target.tagName === 'INPUT') return;
+        if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         const currentCard = document.getElementById(`card-${currentIndex}`);
-        if(!currentCard || currentCard.classList.contains('search-filtered')) return;
+        if(!currentCard) return;
         const pid = currentCard.getAttribute('data-id');
 
         if(e.code === 'ArrowRight') handleSwipe('right', currentIndex, pid);
         if(e.code === 'ArrowLeft') handleSwipe('left', currentIndex, pid);
         if(e.code === 'ArrowDown') handleSwipe('bottom', currentIndex, pid);
     });
+
+    function switchSpotlight(pid) {
+        if(!pid) return;
+        const allCards = document.querySelectorAll('.tinder-card');
+        let targetIdx = -1;
+        allCards.forEach((card, idx) => {
+            if(card.getAttribute('data-id') == pid) targetIdx = idx;
+        });
+        
+        if(targetIdx !== -1) {
+            currentIndex = targetIdx;
+            updateQueueUI();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }
 </script>
 
 <style>

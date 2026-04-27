@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, Request, Form, BackgroundTasks, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import text, String, and_, or_
+from sqlalchemy import text, String, and_, or_, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -29,7 +29,7 @@ except Exception as e:
     print(f"⚠️ [System] Errore inizializzazione HEIF: {e}")
 
 # Database & Core
-from database import engine, SessionLocal, Product, ProductStatus, get_db, Setting, CategoryGovernance, CategoryRule
+from database import engine, SessionLocal, Product, ProductStatus, get_db, Setting, CategoryGovernance, CategoryRule, ApiUsage
 import auth_manager
 import google_auth
 from governance_engine import GovernanceEngine
@@ -99,14 +99,19 @@ def read_dashboard(request: Request, db: Session = Depends(get_db)):
         query = query.filter(Product.status == status_filter)
 
     total_products = db.query(Product).count()
-    validating = db.query(Product).filter(Product.status == ProductStatus.Validating).count()
+    # In Lab = Prodotti con immagini pronte
+    validating = db.query(Product).filter(
+        Product.matched_images_json != None,
+        Product.matched_images_json != "[]",
+        Product.matched_images_json != ""
+    ).count()
     published = db.query(Product).filter(Product.status == ProductStatus.Published).count()
     errors = db.query(Product).filter(Product.status == ProductStatus.Error).count()
-    drafts = db.query(Product).filter(Product.status == ProductStatus.Draft).count()
     
-    serp_used = total_products - drafts
-    from sqlalchemy.sql import func
-    total_val_calc = db.query(func.sum(Product.price)).scalar() or 0.0
+    # Consumo SERP Reale
+    usage = db.query(ApiUsage).filter(ApiUsage.service_name == "serper").first()
+    serp_used = usage.total_hits if usage else 0
+    total_val_calc = 0.0 # Valore rimosso come richiesto
 
     status_sys, all_go = get_system_status()
 
@@ -2081,6 +2086,10 @@ async def certify_product(pid: int, request: Request, db: Session = Depends(get_
     item.material = payload.get("material", item.material)
     item.color = payload.get("color", item.color)
     item.dimensions = payload.get("dimensions", item.dimensions)
+    item.size = payload.get("size", item.size)
+    item.fit = payload.get("fit", item.fit)
+    item.condition_grade = payload.get("condition_grade", item.condition_grade)
+    item.accessories_included = payload.get("accessories_included", item.accessories_included)
     item.category = payload.get("category", item.category)
     item.ai_description_it = payload.get("ai_description_it", item.ai_description_it)
     
@@ -2176,11 +2185,29 @@ async def perform_drive_rename(product, new_title):
 async def lab_regenerate(product_id: int, request: Request, db: Session = Depends(get_db)):
     data = await request.json()
     model_choice = data.get("model", "llama3")
+    target = data.get("target", "all")
     
     from harvester import HarvesterEngine
     engine = HarvesterEngine()
-    result = await engine.process_single_product(product_id, db, model_choice)
-    return result
+    
+    if target == "title":
+        # Logica specifica per il Titolo SEO
+        item = db.query(Product).filter(Product.id == product_id).first()
+        prompt = f"Genera un titolo SEO lussuoso e professionale per un prodotto {item.brand} {item.model}. Includi se possibile il materiale o una caratteristica iconica. Rispondi SOLO con il titolo in Title Case. Max 60 caratteri."
+        import ollama_bridge
+        title = await ollama_bridge.generate_narrative(model_choice, prompt)
+        item.seo_title = title.strip().replace('"', '')
+        db.commit()
+        return {"status": "ok", "seo_title": item.seo_title}
+    
+    elif target == "desc":
+        # Forza la rigenerazione della descrizione
+        result = await engine.process_single_product(product_id, db, model_choice)
+        return {"status": "ok", "ai_description_it": result.get("ai_description_it")}
+    
+    else:
+        result = await engine.process_single_product(product_id, db, model_choice)
+        return result
 
 @app.post("/api/lab/generate-seo/{product_id}")
 async def lab_generate_seo(product_id: int, db: Session = Depends(get_db)):
@@ -2189,6 +2216,11 @@ async def lab_generate_seo(product_id: int, db: Session = Depends(get_db)):
     # Eseguiamo un'elaborazione veloce
     res = await engine.process_single_product(product_id, db)
     return {"status": "ok", "seo_title": res.get("seo_title")}
+
+@app.get("/api/system/usage")
+async def system_usage(db: Session = Depends(get_db)):
+    usage = db.query(ApiUsage).filter(ApiUsage.service_name == "serper").first()
+    return {"serper": usage.total_hits if usage else 0}
 
 @app.post("/api/lab/generate-tags/{product_id}")
 async def lab_generate_tags(product_id: int, db: Session = Depends(get_db)):
@@ -2762,7 +2794,12 @@ def get_product_data(pid: int, db: Session = Depends(get_db)):
             "seo_title": item.seo_title or "",
             "category": item.category or "",
             "ai_description_it": item.ai_description_it or "",
-            "governance_category_id": item.governance_category_id
+            "governance_category_id": item.governance_category_id,
+            "size": item.size or "",
+            "fit": item.fit or "",
+            "condition_grade": item.condition_grade or "",
+            "accessories_included": item.accessories_included or "",
+            "dimensions": item.dimensions or ""
         }
     except Exception as e:
         add_log(f"💥 [API Error] Recupero Prodotto #{pid}: {str(e)}")
