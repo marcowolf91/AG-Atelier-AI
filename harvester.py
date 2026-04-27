@@ -130,10 +130,10 @@ class HarvesterEngine:
             try:
                 import json
                 sandbox = json.loads(item.raw_harvested_data)
-                # Diamo priorità ai dati della sandbox se i campi nel DB sono vuoti
-                if not res["ai_description_it"]: res["ai_description_it"] = sandbox.get("ai_description_it")
-                if not res["seo_title"]: res["seo_title"] = sandbox.get("seo_title")
-                if not res["tags"]: 
+                # Diamo assoluta priorità ai dati freschi della sandbox (Carantena) quando chiamiamo questa API
+                if sandbox.get("ai_description_it"): res["ai_description_it"] = sandbox.get("ai_description_it")
+                if sandbox.get("seo_title"): res["seo_title"] = sandbox.get("seo_title")
+                if sandbox.get("tags"): 
                     s_tags = sandbox.get("tags")
                     res["tags"] = ", ".join(s_tags) if isinstance(s_tags, list) else s_tags
             except: pass
@@ -142,10 +142,23 @@ class HarvesterEngine:
         return res
 
     def _clean_seo_title(self, title):
-        """Converte il titolo in Title Case (Es: 'Gucci Marmont Media')."""
+        """Pulisce il titolo SEO: rimuove 'Shop', 'Buy', converte in Italiano e Title Case."""
         if not title: return ""
-        # Rimuove ALL CAPS se presente e converte in Title Case
-        return title.strip().title()
+        
+        # Parole da rimuovere (Case Insensitive)
+        blacklist = ["shop", "buy", "designer", "acquista", "vendi", "moccasins", "loafers", "for men", "for women"]
+        
+        t = title.lower()
+        for word in blacklist:
+            t = t.replace(word, "")
+        
+        # Pulizia spazi doppi e punteggiatura residua
+        t = t.strip().replace("  ", " ").strip(",").strip("-").strip()
+        
+        if not t or len(t) < 5:
+            return "" # Forza l'AI a riprovare o usa fallback
+            
+        return t.title()
 
     def _clean_tags(self, tags_list):
         """Pulisce i tag per Shopify Smart Collections: minuscolo, sola lingua italiana, blacklist."""
@@ -156,7 +169,8 @@ class HarvesterEngine:
         blacklist = [
             "luxury", "fashion", "authentic", "glamour", "esclusivo", "prestigioso", 
             "originale", "brand", "vintage", "stile", "accessorio",
-            "item", "prodotto", "collezione", "tendenza", "chic", "bag", "chain"
+            "item", "prodotto", "collezione", "tendenza", "chic", "bag", "chain",
+            "donna/uomo", "unisex", "misto", "vari", "unknown"
         ]
         
         # Translation map for common English tags
@@ -331,12 +345,12 @@ class HarvesterEngine:
                     "Analizza i dati del prodotto e restituisci SOLO un oggetto JSON valido.\n"
                     "FORMATO JSON RICHIESTO:\n"
                     "{\n"
-                    "  \"seo_title\": \"Titolo in Title Case\",\n"
-                    "  \"material\": \"Solo materiale fisico IN ITALIANO (es. Pelle, Tessuto, Oro)\",\n"
+                    "  \"seo_title\": \"Titolo in ITALIANO (es. 'Mocassini Gucci Uomo'). NO parole come 'Shop', 'Buy', 'Designer'.\",\n"
+                    "  \"material\": \"SOLO il nome del materiale primario in 1-2 parole (es. 'Pelle', 'Camoscio', 'Oro'). Sposta tutti i dettagli aggiuntivi (es. 'lavorato a mano', 'morsetto') nella 'ai_description_it'.\",\n"
                     "  \"dimensions\": \"Misure\",\n"
                     "  \"product_type\": \"Categoria specifica\",\n"
                     "  \"tags\": \"Tag minuscoli, RIGOROSAMENTE IN ITALIANO (es. 'pelle', 'tracolla', 'catena'). NO parole fashion/vintage.\",\n"
-                    "  \"ai_description_it\": \"Descrizione lusso ed emozionale in italiano. Usa un tono da boutique prestigiosa, soffermati sull'artigianalità e il design iconico.\"\n"
+                    "  \"ai_description_it\": \"Descrizione lusso ed emozionale in italiano. Usa un vocabolario moderno dell'alta moda: vieta parole arcaiche o strane come 'calzari' (usa 'calzature' o 'mocassini'). NON inventare pattern o fantasie inesistenti. Concentrati sui veri dettagli iconici del prodotto (es. esalta il celebre 'morsetto dorato' per i mocassini Gucci). ATTENZIONE: Usa un italiano perfetto e professionale. NON usare MAI termini come 'pellina' (usa 'pelle'), e traduci sempre 'loafers' in 'mocassini'.\"\n"
                     "}\n"
                     "RULES:\n"
                     "1. 'seo_title' must be in Title Case (Capitalize each word).\n"
@@ -344,11 +358,11 @@ class HarvesterEngine:
                     "3. 'ai_description_it' must use STRICT Italian gender agreement (singular). "
                     f"If the product is a '{item.category}', it's likely a 'Borsa' (feminine singular) or 'Zaino' (masculine singular). "
                     "NEVER use plural like 'Le Borse' unless it's a set of items.\n"
-                    "4. RESPECT EXISTING DATA: If the 'Data Prodotto' below already contains clear dimensions (e.g., '19x10x4') or material, "
-                    "DO NOT change them unless they are clearly wrong or in a foreign language. Stick to the source truth as much as possible.\n"
-                    "5. MANDATORY TAGS: Includi SEMPRE tra i tag il Brand, il Genere (Donna/Uomo) e il tipo di prodotto (Borsa/Scarpe/etc).\n"
-                    f"INFO CATALOGO: Brand: '{item.brand}', Categoria Originale: '{item.category}'.\n"
-                    f"Dati Prodotto: {combined_text}"
+                    "4. RESPECT EXISTING DATA (SOURCE TRUTH): Se i 'Dati Catalogo' contengono già una Taglia, un Materiale o un Colore, NON DEVI CAMBIARLI. "
+                    "Non inventare conversioni (es. 8 UK / 9 US) se hai già un numero EU (es. 41). Mantieni il dato originale del catalogo come priorità assoluta.\n"
+                    "5. MANDATORY TAGS: Includi SEMPRE il Brand, il Genere (scegli RIGOROSAMENTE tra 'uomo' o 'donna', mai entrambi nello stesso tag) e il tipo di prodotto.\n"
+                    f"Dati Catalogo: Brand: '{item.brand}', Modello: '{item.model}', Taglia Originale: '{item.size or item.dimensions}', Categoria: '{item.category}'.\n"
+                    f"Dati Web (da usare solo per arricchire la descrizione): {combined_text}"
                 )
                 add_log(f"🧠 [AI-Agent] Generazione mapping selettivo (Ollama)...")
                 local_resp = await ollama_bridge.generate_narrative("llama3", local_prompt)

@@ -62,22 +62,31 @@
                     <div style="font-size: 0.7rem; color: var(--accent-gold); font-weight: 800; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px;">{{ item.brand or 'BRAND SCONOSCIUTO' }}</div>
                     <h1 style="font-size: 2.2rem; font-weight: 900; color: #fff; line-height: 1; letter-spacing: -1px;">{{ item.model or 'MODELLO SENZA NOME' }}</h1>
                 </div>
-                <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 12px;">
-                    <div style="font-size: 1.8rem; font-weight: 800; color: #fff;">€ {{ item.price or '0.00' }}</div>
-                    <div style="display: flex; gap: 8px;">
+                <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 16px;">
+                    <div style="font-size: 2rem; font-weight: 800; color: #fff;">€ {{ item.price or '0.00' }}</div>
+                    
+                    <!-- NAVIGAZIONE POTENZIATA -->
+                    <div style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
                         {% set prev_idx = loop.index0 - 1 %}
                         {% set next_idx = loop.index0 + 1 %}
                         
-                        <button onclick="switchSpotlight({{ products[prev_idx].id if prev_idx >= 0 else 'null' }})" class="btn glass-btn" style="width: 40px; height: 40px; justify-content: center; padding: 0; {% if prev_idx < 0 %}opacity: 0.2; pointer-events: none;{% endif %}">
-                            <i class="ph ph-caret-left" style="font-size: 1.2rem;"></i>
+                        <button onclick="switchSpotlight({{ products[prev_idx].id if prev_idx >= 0 else 'null' }})" 
+                                class="btn glass-btn" 
+                                style="width: 50px; height: 50px; justify-content: center; padding: 0; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); {% if prev_idx < 0 %}opacity: 0.1; pointer-events: none;{% endif %}"
+                                title="Precedente">
+                            <i class="ph ph-arrow-left" style="font-size: 1.5rem; color: #fff;"></i>
                         </button>
                         
-                        <div style="height: 40px; display: flex; align-items: center; padding: 0 12px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 0.7rem; font-weight: 800; color: var(--text-secondary);">
-                            {{ loop.index }} / {{ products|length }}
+                        <div style="background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 8px; text-align: center; min-width: 70px;">
+                            <div style="font-size: 1rem; font-weight: 900; color: var(--accent-gold); line-height: 1;">{{ loop.index }}</div>
+                            <div style="font-size: 0.55rem; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-top: 2px;">di {{ products|length }}</div>
                         </div>
 
-                        <button onclick="switchSpotlight({{ products[next_idx].id if next_idx < products|length else 'null' }})" class="btn glass-btn" style="width: 40px; height: 40px; justify-content: center; padding: 0; {% if next_idx >= products|length %}opacity: 0.2; pointer-events: none;{% endif %}">
-                            <i class="ph ph-caret-right" style="font-size: 1.2rem;"></i>
+                        <button onclick="switchSpotlight({{ products[next_idx].id if next_idx < products|length else 'null' }})" 
+                                class="btn glass-btn" 
+                                style="width: 50px; height: 50px; justify-content: center; padding: 0; background: var(--accent-gold); border: none; {% if next_idx >= products|length %}opacity: 0.1; pointer-events: none;{% endif %}"
+                                title="Prossimo">
+                            <i class="ph ph-arrow-right" style="font-size: 1.5rem; color: #000;"></i>
                         </button>
                     </div>
                 </div>
@@ -138,7 +147,7 @@
                 <div class="input-group">
                     {% set is_shoe = 'scarpe' in (item.category|lower if item.category else '') or 'scarpe' in (item.tags|lower if item.tags else '') %}
                     <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">
-                        {% if is_shoe %}Taglia (EU){% else %}Dimensioni (cm){% endif %}
+                        {% if is_shoe %}Taglia (IT/EU){% else %}Dimensioni (cm){% endif %}
                     </label>
                     <input type="text" class="glass-input" id="dim-{{ item.id }}" value="{{ item.dimensions or (item.size if is_shoe else '') }}" placeholder="es. 42 o 30x20x10" style="width: 100%; font-size: 0.8rem;">
                     {% if item.fit %}
@@ -173,40 +182,53 @@
                 <button onclick="regenerateAI(event, {{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
                     <i class="ph-duotone ph-magic-wand"></i>
                 </button>
-                <button onclick="deepResearch({{ item.id }})" id="btn-res-{{ item.id }}" class="btn attr-primary" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Web Intelligence Research">
-                    <i class="ph-bold ph-globe-hemisphere-west"></i>
-                </button>
             </div>
 
-            <!-- Lab Controls -->
-            <div style="display: flex; justify-content: center; gap: 48px; margin-top: auto;">
-                <button class="control-btn reject" onclick="handleSwipe('left', {{ loop.index0 }}, {{ item.id }})" title="Rifiuta (Back to Draft)">
-                    <i class="ph ph-arrow-left"></i>
-                </button>
-                <button class="control-btn skip" onclick="handleSwipe('bottom', {{ loop.index0 }}, {{ item.id }})" title="Skip">
-                    <i class="ph ph-dots-three-circle"></i>
-                </button>
-                <button class="control-btn certify" onclick="handleSwipe('right', {{ loop.index0 }}, {{ item.id }})" title="CERTIFICA E PUBBLICA">
-                    <i class="ph ph-seal-check"></i>
-                </button>
             </div>
-
         </div>
         {% endfor %}
+    </div>
+
+    <!-- ACTION CONTROLS (FIXED AT BOTTOM) -->
+    <div style="position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 40px; z-index: 9999; width: 100%; pointer-events: none;">
+        
+        <div style="text-align: center; pointer-events: auto;">
+            <button class="control-btn reject" onclick="const card = document.querySelector('.tinder-card.front'); handleSwipe('left', currentIndex, card.getAttribute('data-id'))" 
+                    style="width: 70px; height: 70px; background: #1a1a1a; border: 2px solid #ff4d4d; color: #ff4d4d; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);">
+                <i class="ph-bold ph-x"></i>
+            </button>
+            <div style="font-size: 0.6rem; font-weight: 800; color: #ff4d4d; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px;">Scarta</div>
+        </div>
+
+        <div style="text-align: center; pointer-events: auto;">
+            <button class="control-btn skip" onclick="const card = document.querySelector('.tinder-card.front'); quickFix(card.getAttribute('data-id'))" 
+                    style="width: 60px; height: 60px; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);">
+                <i class="ph-duotone ph-pencil-line"></i>
+            </button>
+            <div style="font-size: 0.55rem; font-weight: 700; color: rgba(255,255,255,0.4); margin-top: 8px; text-transform: uppercase;">Edita</div>
+        </div>
+
+        <div style="text-align: center; pointer-events: auto;">
+            <button class="control-btn certify" onclick="const card = document.querySelector('.tinder-card.front'); handleSwipe('right', currentIndex, card.getAttribute('data-id'))" 
+                    style="width: 90px; height: 90px; background: #4CAF50; color: #fff; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; cursor: pointer; box-shadow: 0 15px 30px rgba(76, 175, 80, 0.4);">
+                <i class="ph-fill ph-check-circle"></i>
+            </button>
+            <div style="font-size: 0.7rem; font-weight: 900; color: #4CAF50; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px;">Approva & Pubblica</div>
+        </div>
     </div>
 </div>
 
 <style>
-.lab-container { position: relative; height: 800px; display: flex; justify-content: center; }
-.tinder-viewport { position: relative; width: 100%; max-width: 820px; height: 100%; }
+.lab-container { position: relative; min-height: 1100px; display: flex; justify-content: center; padding-bottom: 100px; }
+.tinder-viewport { position: relative; width: 100%; max-width: 820px; height: 1000px; }
 
 .tinder-card {
     position: absolute; width: 100%; height: 100%; padding: 32px; border-radius: 24px; 
-    background: #111; /* Sostituzione glassmorphism con solid per performance */
+    background: #111; 
     border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
     display: flex; flex-direction: column; overflow: hidden;
-    transition: none; /* Rimozione transizioni pesanti */
     user-select: none;
+    padding-bottom: 40px;
 }
 
 .tinder-card.front { z-index: 10; opacity: 1; transform: none; }
@@ -308,7 +330,8 @@
                 }
             });
         } else {
-            setTimeout(() => { window.location.reload(); }, 300);
+            showToast("✨ Ottimo lavoro! Hai completato tutti i prodotti in coda.");
+            setTimeout(() => { window.location.href = '/atelier-lab'; }, 2000);
         }
     }
 
