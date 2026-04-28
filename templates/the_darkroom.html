@@ -15,12 +15,23 @@
     </div>
 </div>
 
-<!-- TABS -->
-<div style="display: flex; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
-    <div class="sub-tab active" onclick="setFilter('all')" id="tab-all">TUTTI <span class="badge-count" id="count-all">0</span></div>
-    <div class="sub-tab" onclick="setFilter('raw')" id="tab-raw">DA SVILUPPARE <span class="badge-count" id="count-raw">0</span></div>
-    <div class="sub-tab" onclick="setFilter('pending')" id="tab-pending">DA ASSOCIARE <span class="badge-count" id="count-pending">0</span></div>
-    <div class="sub-tab" onclick="setFilter('completed')" id="tab-completed">COMPLETATI <span class="badge-count" id="count-completed">0</span></div>
+<!-- TABS & BATCH ACTIONS -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+    <div style="display: flex; gap: 16px;">
+        <div class="sub-tab active" onclick="setFilter('all')" id="tab-all">TUTTI <span class="badge-count" id="count-all">0</span></div>
+        <div class="sub-tab" onclick="setFilter('raw')" id="tab-raw">DA SVILUPPARE <span class="badge-count" id="count-raw">0</span></div>
+        <div class="sub-tab" onclick="setFilter('pending')" id="tab-pending">DA ASSOCIARE <span class="badge-count" id="count-pending">0</span></div>
+        <div class="sub-tab" onclick="setFilter('completed')" id="tab-completed">COMPLETATI <span class="badge-count" id="count-completed">0</span></div>
+    </div>
+    
+    <div style="display: flex; gap: 8px;">
+        <button onclick="selectAllVisible()" class="btn-action">
+            <i class="ph ph-check-square"></i> SELEZIONA TUTTO
+        </button>
+        <button onclick="clearSelection()" class="btn-action" style="opacity: 0.6;">
+            <i class="ph ph-x-square"></i> DESELEZIONA
+        </button>
+    </div>
 </div>
 
 <div id="image-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;">
@@ -40,7 +51,7 @@
     <button onclick="clearSelection()" style="background: none; border: none; color: #fff; opacity: 0.7; font-size: 0.6rem; cursor: pointer; text-decoration: underline;">Annulla</button>
 </div>
 
-<script src="/static/js/darkroom_core.js"></script>
+<script src="/static/js/darkroom_core.js?v=1.0.2"></script>
 
 <script>
     let selectedImageIds = [];
@@ -80,6 +91,23 @@
         renderGrid();
     }
 
+    function selectAllVisible() {
+        const jpgNames = new Set(
+            DarkroomCore.allImages
+                .filter(img => {
+                    const name = (img.name || "").toLowerCase();
+                    const mime = (img.mimeType || "").toLowerCase();
+                    const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
+                    return (name.endsWith('.jpg') || name.endsWith('.jpeg') || mime.includes('jpeg')) && !isRaw;
+                })
+                .map(img => img.name.split('.')[0].toLowerCase().trim())
+        );
+        const filtered = DarkroomCore.getFilteredImages(DarkroomCore.currentFilter, jpgNames);
+        selectedImageIds = filtered.map(img => img.id);
+        updateFloatingBar();
+        renderGrid();
+    }
+
     function updateFloatingBar() {
         const bar = document.getElementById('floating-actions');
         const badge = document.getElementById('selected-count-badge');
@@ -94,7 +122,8 @@
             const selectedImages = DarkroomCore.allImages.filter(img => selectedImageIds.includes(img.id));
             const hasRaw = selectedImages.some(img => {
                 const name = (img.name || "").toLowerCase();
-                return name.endsWith('.heic') || (img.mimeType || "").includes('heif') || name.endsWith('.png');
+                const mime = (img.mimeType || "").toLowerCase();
+                return name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
             });
             
             if (hasRaw) {
@@ -125,12 +154,17 @@
     function updateCounts() {
         const jpgNames = new Set(
             DarkroomCore.allImages
-                .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
-                .map(img => img.name.split('.')[0].toLowerCase())
+                .filter(img => {
+                    const name = (img.name || "").toLowerCase();
+                    const mime = (img.mimeType || "").toLowerCase();
+                    const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
+                    return (name.endsWith('.jpg') || name.endsWith('.jpeg') || mime.includes('jpeg')) && !isRaw;
+                })
+                .map(img => img.name.split('.')[0].toLowerCase().trim())
         );
 
         const counts = {
-            all: DarkroomCore.allImages.length,
+            all: DarkroomCore.getFilteredImages('all', jpgNames).length,
             raw: DarkroomCore.getFilteredImages('raw', jpgNames).length,
             pending: DarkroomCore.getFilteredImages('pending', jpgNames).length,
             completed: DarkroomCore.getFilteredImages('completed', jpgNames).length
@@ -148,8 +182,13 @@
         
         const jpgNames = new Set(
             DarkroomCore.allImages
-                .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
-                .map(img => img.name.split('.')[0].toLowerCase())
+                .filter(img => {
+                    const name = (img.name || "").toLowerCase();
+                    const mime = (img.mimeType || "").toLowerCase();
+                    const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
+                    return (name.endsWith('.jpg') || name.endsWith('.jpeg') || mime.includes('jpeg')) && !isRaw;
+                })
+                .map(img => img.name.split('.')[0].toLowerCase().trim())
         );
 
         const filtered = DarkroomCore.getFilteredImages(DarkroomCore.currentFilter, jpgNames);
@@ -162,10 +201,16 @@
         filtered.forEach(img => {
             const isSelected = selectedImageIds.includes(img.id);
             const name = (img.name || "").toLowerCase();
-            const isRaw = name.endsWith('.heic') || (img.mimeType || "").includes('heif') || name.endsWith('.png');
+            const mime = (img.mimeType || "").toLowerCase();
+            const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
             const isAssociated = img.associated === true;
-            const nameWithoutExt = name.split('.')[0];
+            const nameWithoutExt = name.split('.')[0].trim();
             const alreadyDeveloped = isRaw && jpgNames.has(nameWithoutExt);
+            
+            // Logica Tracciabilità
+            const description = img.description || "";
+            const isConverted = description.includes("Origine:");
+            const originalName = isConverted ? description.split('Origine: ')[1].split(' ')[0] : "";
 
             const card = document.createElement('div');
             card.className = 'glass-panel' + (isSelected ? ' selected' : '');
@@ -193,8 +238,19 @@
                 badgeHtml = '<div style="position:absolute; top:12px; left:12px; background:#4285f4; color:#fff; font-size:0.55rem; font-weight:900; padding:2px 6px; border-radius:4px; z-index:10; box-shadow:0 2px 5px rgba(0,0,0,0.3);">DA ASSOCIARE</div>';
             }
 
+            // Aggiunta badge tracciabilità
+            let originHtml = '';
+            if (isConverted) {
+                originHtml = `
+                    <div style="position:absolute; bottom:60px; right:15px; background:rgba(0,0,0,0.6); color:var(--accent-gold); font-size:0.5rem; font-weight:800; padding:2px 8px; border-radius:10px; z-index:10; backdrop-filter:blur(4px); border:1px solid rgba(212,175,55,0.3);">
+                        <i class="ph ph-magic-wand"></i> ${originalName}
+                    </div>
+                `;
+            }
+
             card.innerHTML = `
                 ${badgeHtml}
+                ${originHtml}
                 <div style="width:100%; aspect-ratio:1; overflow:hidden; border-radius:8px; background:#000; margin-bottom:10px;">
                     <img src="${imgSrc}" loading="lazy" style="width:100%; height:100%; object-fit:cover; opacity: ${isAssociated || alreadyDeveloped ? '0.5' : '1'}">
                 </div>
@@ -211,6 +267,24 @@
 </script>
 
 <style>
+.btn-action {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.btn-action:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: var(--accent-gold);
+}
 .sub-tab { 
     font-size: 0.7rem; 
     font-weight: 800; 

@@ -6,7 +6,10 @@
 <div style="max-width: 800px; margin: 0 auto;">
     <div class="glass-panel" style="padding: 30px; text-align: center; margin-bottom: 30px;">
         <i class="ph ph-magic-wand" style="font-size: 3rem; color: var(--accent-gold); margin-bottom: 20px; display: block;"></i>
-        <h2 style="font-size: 1.5rem; margin-bottom: 10px;">Sviluppo Asset Digitali</h2>
+        <h2 style="font-size: 1.5rem; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 15px;">
+            Sviluppo Asset Digitali 
+            <span id="header-count-badge" style="background: var(--accent-gold); color: #000; font-size: 0.8rem; padding: 2px 10px; border-radius: 20px; font-weight: 900;">0</span>
+        </h2>
         <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 25px;">
             Stai per convertire i file HEIC/PNG selezionati in JPG ottimizzati per il web.
         </p>
@@ -29,57 +32,95 @@
     </div>
 
     <div class="glass-panel" style="padding: 20px;">
-        <div style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">Asset in Coda</div>
+        <div style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+            <span>Asset in Coda</span>
+            <span id="queue-count" style="color: var(--accent-gold);">0 ASSET</span>
+        </div>
         <div id="queue-list" style="display: flex; flex-direction: column; gap: 10px;">
             <!-- Populated via JS -->
         </div>
     </div>
 </div>
 
-<script src="/static/js/darkroom_core.js"></script>
+<script src="/static/js/darkroom_core.js?v=1.0.2"></script>
 <script>
     const fileIds = "{{ file_ids }}".split(',').filter(id => id.length > 0);
     let queueImages = [];
 
     async function init() {
-        await DarkroomCore.syncDrive();
+        console.log("Inizializzazione Development Lab con ID:", fileIds);
+        const status = document.getElementById('status-text');
         
-        if (fileIds.length > 0) {
-            // Modalità Selezione: Usiamo solo gli ID passati
-            queueImages = DarkroomCore.allImages.filter(img => fileIds.includes(img.id));
-        } else {
-            // Modalità Workstation: Carichiamo tutti i RAW pendenti
-            const jpgNames = new Set(
-                DarkroomCore.allImages
-                    .filter(img => img.name && (img.name.toLowerCase().endsWith('.jpg') || img.name.toLowerCase().endsWith('.jpeg')))
-                    .map(img => img.name.split('.')[0].toLowerCase())
-            );
+        try {
+            // Forziamo il refresh per essere sicuri di avere i dati freschi
+            await DarkroomCore.syncDrive(true);
+            console.log("Sincronizzazione completata. Totale asset caricati:", DarkroomCore.allImages.length);
             
-            queueImages = DarkroomCore.allImages.filter(img => {
-                const name = (img.name || "").toLowerCase();
-                const isRaw = name.endsWith('.heic') || (img.mimeType || "").includes('heif') || name.endsWith('.png');
-                const nameWithoutExt = name.split('.')[0];
-                return isRaw && !jpgNames.has(nameWithoutExt) && !img.associated;
-            });
+            if (fileIds.length > 0) {
+                // Modalità Selezione: Usiamo solo gli ID passati
+                queueImages = DarkroomCore.allImages.filter(img => fileIds.includes(img.id));
+                console.log("Asset trovati per la selezione:", queueImages.length);
+            } else {
+                // Modalità Workstation: Carichiamo tutti i RAW pendenti
+                const jpgNames = new Set(
+                    DarkroomCore.allImages
+                        .filter(img => {
+                            const name = (img.name || "").toLowerCase();
+                            const mime = (img.mimeType || "").toLowerCase();
+                            const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
+                            return (name.endsWith('.jpg') || name.endsWith('.jpeg') || mime.includes('jpeg')) && !isRaw;
+                        })
+                        .map(img => img.name.split('.')[0].toLowerCase().trim())
+                );
+                
+                queueImages = DarkroomCore.allImages.filter(img => {
+                    const name = (img.name || "").toLowerCase();
+                    const mime = (img.mimeType || "").toLowerCase();
+                    const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
+                    const nameWithoutExt = name.split('.')[0].toLowerCase().trim();
+                    return isRaw && !jpgNames.has(nameWithoutExt) && !img.associated;
+                });
+                console.log("Asset trovati per workstation:", queueImages.length);
+            }
+            
+            renderQueue();
+            
+            if (queueImages.length === 0) {
+                const list = document.getElementById('queue-list');
+                list.innerHTML = `
+                    <div style="text-align:center; padding:40px; background:rgba(239,68,68,0.05); border-radius:12px; border:1px dashed #ef4444;">
+                        <i class="ph ph-warning-circle" style="font-size:2rem; color:#ef4444; margin-bottom:15px; display:block;"></i>
+                        <div style="color:#fff; font-weight:700; margin-bottom:5px;">Nessun asset pronto per lo sviluppo</div>
+                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:20px;">Assicurati di aver selezionato i file HEIC/PNG nel browser.</div>
+                        <button onclick="window.location.href='/the-darkroom'" class="btn glass-btn" style="font-size:0.65rem;">TORNA AL BROWSER</button>
+                    </div>
+                `;
+            }
+        } catch (err) {
+            console.error("Errore Init:", err);
+            document.getElementById('queue-list').innerHTML = `<div style="text-align:center; padding:20px; color:#ef4444;">Errore caricamento: ${err.message}</div>`;
         }
-        
-        renderQueue();
     }
 
     function renderQueue() {
         const list = document.getElementById('queue-list');
+        const headerBadge = document.getElementById('header-count-badge');
+        const queueCount = document.getElementById('queue-count');
+        
         list.innerHTML = '';
+        headerBadge.innerText = queueImages.length;
+        queueCount.innerText = `${queueImages.length} ASSET PRONTI`;
         
         queueImages.forEach(img => {
             const item = document.createElement('div');
-            item.style.cssText = 'display:flex; align-items:center; gap:15px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.05);';
+            item.style.cssText = 'display:flex; align-items:center; gap:15px; padding:12px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.05); transition:all 0.2s;';
             item.innerHTML = `
-                <img src="/api/drive/proxy/${img.id}" style="width:50px; height:50px; object-fit:cover; border-radius:4px;">
+                <img src="/api/drive/proxy/${img.id}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; background:#000;">
                 <div style="flex-grow:1;">
                     <div style="font-size:0.75rem; font-weight:700; color:#fff;">${img.name}</div>
                     <div style="font-size:0.6rem; color:var(--text-secondary);">${(img.size / 1024 / 1024).toFixed(2)} MB</div>
                 </div>
-                <div id="status-${img.id}" style="font-size:0.6rem; font-weight:900; color:var(--text-secondary);">IN ATTESA</div>
+                <div id="status-${img.id}" style="font-size:0.6rem; font-weight:900; color:var(--accent-gold); letter-spacing:1px;">IN ATTESA</div>
             `;
             list.appendChild(item);
         });

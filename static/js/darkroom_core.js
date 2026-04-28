@@ -25,14 +25,20 @@ const DarkroomCore = {
     // 2. LOGICA FILTRAGGIO
     getFilteredImages(filter, jpgNames) {
         return this.allImages.filter(img => {
-            if (filter === 'all') return true;
+            const name = (img.name || "").toLowerCase();
+            const mime = (img.mimeType || "").toLowerCase();
+            
+            const isRaw = name.endsWith('.heic') || name.endsWith('.png') || mime.includes('heif') || mime.includes('png');
+            const isPending = name.endsWith('.jpg') || name.endsWith('.jpeg') || mime.includes('jpeg');
+            
+            const nameWithoutExt = name.split('.')[0].trim();
+            const alreadyDeveloped = isRaw && jpgNames.has(nameWithoutExt);
+
+            if (filter === 'all') return !alreadyDeveloped;
             if (filter === 'completed') return img.associated;
             
-            const isRaw = (img.name || "").toLowerCase().endsWith('.heic') || (img.mimeType || "").includes('heif') || (img.mimeType || "").includes('png');
-            const nameWithoutExt = (img.name || "").split('.')[0].toLowerCase();
-            
-            if (filter === 'raw') return !img.associated && isRaw && !jpgNames.has(nameWithoutExt);
-            if (filter === 'pending') return !img.associated && (img.name || "").toLowerCase().match(/\.(jpg|jpeg)$/);
+            if (filter === 'raw') return !img.associated && isRaw && !alreadyDeveloped;
+            if (filter === 'pending') return !img.associated && isPending && !isRaw;
             return true;
         });
     },

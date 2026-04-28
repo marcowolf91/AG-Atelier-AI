@@ -423,9 +423,41 @@ async def api_convert_image(request: Request):
         # Download meta
         meta = drive_service.files().get(fileId=file_id, fields="id, name, parents", supportsAllDrives=True).execute()
         
-        # Logica di destinazione (Mirror o Root Out)
+        # Logica di destinazione (Deep Mirroring)
         source_parent_id = meta.get('parents', [None])[0]
         target_folder_id = target_root_id or source_parent_id
+        
+        # Carico la radice sorgente per sapere dove fermarmi con il mirroring
+        source_root_id = cnf.get("folder_id")
+
+        if target_root_id and source_parent_id and source_root_id:
+            try:
+                # Risalgo la gerarchia dal file fino alla radice sorgente per costruire il percorso
+                path_folders = []
+                curr_id = source_parent_id
+                while curr_id and curr_id != source_root_id:
+                    f_meta = drive_service.files().get(fileId=curr_id, fields='id, name, parents', supportsAllDrives=True).execute()
+                    path_folders.insert(0, f_meta.get('name'))
+                    parents = f_meta.get('parents', [])
+                    curr_id = parents[0] if parents else None
+                
+                # Ora replico il percorso nella destinazione
+                last_target_parent = target_root_id
+                for folder_name in path_folders:
+                    q = f"name = '{folder_name}' and '{last_target_parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+                    res = drive_service.files().list(q=q, fields='files(id, description)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+                    existing = res.get('files', [])
+                    if existing:
+                        last_target_parent = existing[0]['id']
+                    else:
+                        f_body = {'name': folder_name, 'parents': [last_target_parent], 'mimeType': 'application/vnd.google-apps.folder'}
+                        new_f = drive_service.files().create(body=f_body, fields='id', supportsAllDrives=True).execute()
+                        last_target_parent = new_f['id']
+                
+                target_folder_id = last_target_parent
+            except Exception as e:
+                print(f"⚠️ Mirroring Path Error: {e}")
+                target_folder_id = target_root_id
         
         # Download media
         raw_data = drive_service.files().get_media(fileId=file_id).execute()
@@ -439,22 +471,48 @@ async def api_convert_image(request: Request):
         img.save(out, format="JPEG", quality=95, optimize=True)
         out.seek(0)
         
-        # Upload
-        media = MediaIoBaseUpload(out, mimetype='image/jpeg')
-        new_name = meta['name'].rsplit('.', 1)[0] + ".jpg"
+        # 4. Upload finale (con metadata di tracciabilità)
+        file_metadata = {
+            'name': filename.rsplit('.', 1)[0] + '.jpg',
+            'parents': [target_folder_id],
+            'description': f"Origine: {filename} (Sviluppato via Atelier AI)"
+        }
         
-        new_file = drive_service.files().create(
-            body={'name': new_name, 'parents': [target_folder_id]},
+        from googleapiclient.http import MediaIoBaseUpload
+        media = MediaIoBaseUpload(out, mimetype='image/jpeg')
+        created_file = drive_service.files().create(
+            body=file_metadata,
             media_body=media,
-            fields='id',
+            fields='id, name',
             supportsAllDrives=True
         ).execute()
         
+        # 5. LOG STORICO (Tracciabilità locale)
+        history_file = 'darkroom_history.json'
+        history = []
+        if os.path.exists(history_file):
+            try:
+                with open(history_file, 'r') as hf:
+                    history = json.load(hf)
+            except: history = []
+        
+        history.append({
+            "timestamp": datetime.datetime.now().isoformat(),
+            "original_name": filename,
+            "original_id": file_id,
+            "converted_name": created_file.get('name'),
+            "converted_id": created_file.get('id'),
+            "target_folder_id": target_folder_id
+        })
+        
+        with open(history_file, 'w') as hf:
+            json.dump(history, hf, indent=4)
+
         # INVALIDIAMO LA CACHE: Forziamo il sistema a rivedere il drive al prossimo caricamento
         if os.path.exists(DARKROOM_CACHE_FILE):
             os.remove(DARKROOM_CACHE_FILE)
             
-        return {"status": "ok", "new_file_id": new_file['id']}
+        return {"status": "ok", "new_file_id": created_file.get('id')}
         
     except Exception as e:
         print(f"❌ Conversion Error ({file_id}): {e}")
@@ -563,7 +621,7 @@ def get_darkroom_images(refresh: bool = False, db: Session = Depends(get_db)):
             while True:
                 res = drive_service.files().list(
                     q=q, 
-                    fields="nextPageToken, files(id, name, mimeType, size, thumbnailLink, createdTime)", 
+                    fields="nextPageToken, files(id, name, mimeType, size, thumbnailLink, createdTime, description)", 
                     pageSize=1000, 
                     pageToken=page_token,
                     orderBy="createdTime desc",
@@ -577,10 +635,31 @@ def get_darkroom_images(refresh: bool = False, db: Session = Depends(get_db)):
                 log_f.write(f"Assets found: {len(all_files)}\n")
                 
             with open(DARKROOM_CACHE_FILE, 'w') as f:
+                # FILTRO INTELLIGENTE: Se esiste un JPG e un HEIC/PNG con lo stesso nome, teniamo solo il JPG
+                file_map = {} # normalized_base -> file_obj
+                
+                # Ordiniamo per estensione in modo che i JPG abbiano la precedenza nella mappa
+                sorted_files = sorted(all_files, key=lambda x: (1 if x['name'].lower().endswith(('.jpg', '.jpeg')) else 2))
+                
+                for f_obj in sorted_files:
+                    # Normalizziamo il nome base (senza estensione, minuscolo e senza spazi)
+                    raw_name = f_obj['name'].rsplit('.', 1)[0]
+                    base = raw_name.lower().strip()
+                    
+                    if base not in file_map:
+                        file_map[base] = f_obj
+                    else:
+                        # Se abbiamo già un file con questo nome base, scartiamo l'originale
+                        if f_obj['name'].lower().endswith(('.heic', '.png')):
+                            continue 
+                
+                final_files = list(file_map.values())
+                
                 json.dump({
-                    "raw_files": all_files,
+                    "raw_files": final_files,
                     "timestamp": now_ts
                 }, f)
+                all_files = final_files 
         except Exception as e:
             print(f"❌ Errore Drive Scan: {e}")
             return []
