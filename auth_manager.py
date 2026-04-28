@@ -32,12 +32,13 @@ def save_api_key(service: str, key: str):
     return False
 
 def get_api_key(service: str):
-    """Legge una chiave (mascherata per la UI) dall'ambiente."""
+    """Legge una chiave (mascherata per la UI) dall'ambiente in modo human-friendly."""
     val = get_raw_api_key(service)
     if val:
-        if len(val) > 8:
-            return f"{val[:4]}...{val[-4:]}"
-        return "***"
+        val = val.strip()
+        if len(val) > 10:
+            return f"{val[:6]}...{val[-4:]}"
+        return "*******"
     return None
 
 def get_raw_api_key(service: str):

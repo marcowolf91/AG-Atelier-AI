@@ -186,12 +186,12 @@
     <div class="glass-panel" style="padding: 32px; display: flex; flex-direction: column; gap: 16px;">
         <form method="POST" action="/api/settings/keys" class="key-row">
             <div class="key-brand"><img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg"> <span>OpenAI Service</span></div>
-            <input type="password" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}" style="flex:1;">
+            <input type="text" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}" style="flex:1;">
             <button type="submit" class="btn glass-btn">Aggiorna</button>
         </form>
         <form method="POST" action="/api/settings/keys" class="key-row">
             <div class="key-brand"><i class="ph ph-google-logo" style="font-size: 24px;"></i> <span>Google Gemini</span></div>
-            <input type="password" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}" style="flex:1;">
+            <input type="text" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}" style="flex:1;">
             <button type="submit" class="btn glass-btn">Aggiorna</button>
         </form>
     </div>
