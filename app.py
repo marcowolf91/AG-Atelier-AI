@@ -376,6 +376,8 @@ def get_harvester_batch_details(db: Session = Depends(get_db)):
         
         results.append({
             "id": p.id,
+            "source_sheet": p.source_sheet or "",
+            "original_sheets_row": p.original_sheets_row or p.id,
             "brand": p.brand or "",
             "model": p.model or "",
             "current": {
@@ -974,6 +976,14 @@ async def import_shopify_product(request: Request):
     bridge = ShopifyBridge()
     # Passiamo il mode al bridge per gestire lo stato iniziale
     return await bridge.import_product_to_pim(data, mode=mode)
+
+@app.post("/api/shopify/publish")
+async def publish_shopify_product(request: Request):
+    data = await request.json()
+    sku = data.get("sku")
+    from shopify_bridge import ShopifyBridge
+    bridge = ShopifyBridge()
+    return await bridge.publish_product_to_shopify(sku)
 
 @app.post("/api/vault/manual-match")
 async def vault_manual_match(request: Request, db: Session = Depends(get_db)):
@@ -2194,7 +2204,7 @@ async def lab_regenerate(product_id: int, request: Request, db: Session = Depend
     if target == "title":
         # Logica specifica per il Titolo SEO
         item = db.query(Product).filter(Product.id == product_id).first()
-        prompt = f"Genera un titolo SEO lussuoso e professionale per un prodotto {item.brand} {item.model}. Includi se possibile il materiale o una caratteristica iconica. Rispondi SOLO con il titolo in Title Case. Max 60 caratteri."
+        prompt = f"Genera un titolo SEO pulito per il prodotto {item.brand} {item.model}. Usa SOLO Brand + Modello + materiale (opzionale) in Title Case. NON inserire MAI la categoria (divieto di usare parole come 'Borsa Donna', 'Scarpe', ecc.). Rispondi SOLO con il titolo."
         import ollama_bridge
         title = await ollama_bridge.generate_narrative(model_choice, prompt)
         item.seo_title = title.strip().replace('"', '')
@@ -2202,9 +2212,14 @@ async def lab_regenerate(product_id: int, request: Request, db: Session = Depend
         return {"status": "ok", "seo_title": item.seo_title}
     
     elif target == "desc":
-        # Forza la rigenerazione della descrizione
-        result = await engine.process_single_product(product_id, db, model_choice)
-        return {"status": "ok", "ai_description_it": result.get("ai_description_it")}
+        # Logica specifica per la Descrizione
+        item = db.query(Product).filter(Product.id == product_id).first()
+        prompt = f"Scrivi una descrizione lussuosa, emozionale e corposa (almeno 5-6 frasi) per un prodotto di alta moda: {item.brand} {item.model}. Esalta la qualità, l'artigianalità e il design. Usa un italiano perfetto e altamente professionale. Rispondi SOLO con il testo della descrizione, senza formattazioni o introduzioni."
+        import ollama_bridge
+        desc = await ollama_bridge.generate_narrative(model_choice, prompt)
+        item.ai_description_it = desc.strip()
+        db.commit()
+        return {"status": "ok", "ai_description_it": item.ai_description_it}
     
     else:
         result = await engine.process_single_product(product_id, db, model_choice)

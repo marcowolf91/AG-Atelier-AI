@@ -193,14 +193,52 @@ class ShopifyBridge:
                 except Exception as e:
                     add_bridge_log(f"❌ Eccezione durante fetch catalogo: {str(e)}")
         
-        # 2. Aggiungiamo i prodotti "Pubblicati" nel DB locale (se non sono già su Shopify)
+        # 2. Aggiungiamo i prodotti LOCALI (Pronti o Pubblicati)
         db = SessionLocal()
         published_items = db.query(Product).filter(Product.status == ProductStatus.Published).all()
+        ready_items = db.query(Product).filter(Product.status == ProductStatus.Ready).all()
+        
+        published_skus = {p.sku for p in published_items if p.sku}
+        
+        # Marchiamo i prodotti Shopify che derivano dal nostro DB locale
+        for r in results:
+            r["is_local_published"] = (r.get("sku") in published_skus)
+            
         existing_skus = {r.get("sku") for r in results if r.get("sku")}
+        
+        # A) Aggiungiamo i "Da Pubblicare" (Ready)
+        for p in ready_items:
+            if p.sku and p.sku in existing_skus:
+                continue # Evita duplicato se stranamente è già su Shopify
+                
+            img = None
+            if p.matched_images_json:
+                try:
+                    imgs = json.loads(p.matched_images_json)
+                    if imgs and len(imgs) > 0: 
+                        img = f"/api/drive/proxy/{imgs[0]}"
+                except: pass
+                
+            results.append({
+                "id": f"gid://shopify/Product/Local-{p.id}",
+                "title": p.seo_title or f"{p.brand} {p.model}",
+                "sku": p.sku or f"SKU-{p.id}",
+                "price": str(p.price) if p.price else "0.00",
+                "status": "LOCAL ONLY",
+                "image": img,
+                "inventory": 1,
+                "product_type": p.category or "Non categorizzato",
+                "is_local_published": False
+            })
+            
+        # B) Aggiungiamo i "Pubblicati" (Published) che Shopify non ha ancora indicizzato
+        # oppure li riportiamo a "Ready" se sono stati cancellati da Shopify.
+        import datetime
+        now = datetime.datetime.utcnow()
         
         for p in published_items:
             if p.sku and p.sku in existing_skus:
-                continue # Evita duplicato
+                continue
                 
             img = None
             if p.matched_images_json:
@@ -210,19 +248,228 @@ class ShopifyBridge:
                         img = f"/api/drive/proxy/{imgs[0]}"
                 except: pass
             
+            # Timer di verità: se l'aggiornamento è recentissimo (< 60s), diamo tempo a Shopify.
+            # Se è passato più di un minuto, significa che il prodotto è stato cancellato da Shopify.
+            time_since_update = (now - p.updated_at).total_seconds() if p.updated_at else 100
+            
+            if time_since_update < 60:
+                ui_status = "DRAFT"
+                is_pub = True
+            else:
+                # E' stato cancellato da Shopify! Riportiamo indietro lo stato.
+                p.status = ProductStatus.Ready
+                db.commit()
+                ui_status = "LOCAL ONLY"
+                is_pub = False
+                
             results.append({
                 "id": f"gid://shopify/Product/Local-{p.id}",
                 "title": p.seo_title or f"{p.brand} {p.model}",
                 "sku": p.sku or f"SKU-{p.id}",
                 "price": str(p.price) if p.price else "0.00",
-                "status": "LOCAL ONLY",
+                "status": ui_status,
                 "image": img,
                 "inventory": 1,
-                "product_type": p.category or "Non categorizzato"
+                "product_type": p.category or "Non categorizzato",
+                "is_local_published": is_pub
             })
+            
         db.close()
 
         return results
+
+    async def publish_product_to_shopify(self, sku: str) -> dict:
+        """
+        Esporta un prodotto dal PIM verso Shopify come Bozza.
+        """
+        db = SessionLocal()
+        try:
+            if sku.startswith("SKU-"):
+                try:
+                    product_id = int(sku.replace("SKU-", ""))
+                    p = db.query(Product).filter(Product.id == product_id).first()
+                except:
+                    p = db.query(Product).filter(Product.sku == sku).first()
+            else:
+                p = db.query(Product).filter(Product.sku == sku).first()
+                
+            if not p:
+                return {"status": "error", "message": f"Prodotto {sku} non trovato nel database."}
+            
+            title = p.seo_title or f"{p.brand} {p.model}"
+            price = str(p.price) if p.price else "0.00"
+            # Usa la descrizione AI arricchita, altrimenti quella base
+            desc_html = p.ai_description_it or p.description or ""
+            
+            # Formattazione Tag CSV-style (array di stringhe)
+            tags_list = [t.strip() for t in p.tags.split(",")] if p.tags else []
+            
+            mutation_create = """
+            mutation productCreate($input: ProductInput!) {
+              productCreate(input: $input) {
+                product {
+                  id
+                  title
+                  variants(first: 1) {
+                    edges {
+                      node {
+                        id
+                      }
+                    }
+                  }
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+            """
+            
+            variables_create = {
+                "input": {
+                    "title": title,
+                    "descriptionHtml": desc_html,
+                    "productType": p.category or "Non categorizzato",
+                    "vendor": p.brand or "",
+                    "status": "DRAFT",
+                    "tags": tags_list,
+                    "seo": {
+                        "title": p.seo_title or title,
+                        "description": desc_html[:320]
+                    }
+                }
+            }
+            
+            if not self.token or not self.api_url:
+                return {"status": "error", "message": "Credenziali Shopify mancanti nel Bridge."}
+                
+            headers = {
+                "X-Shopify-Access-Token": self.token,
+                "Content-Type": "application/json"
+            }
+            
+            # STEP 1: Create the Product shell
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp1 = await client.post(
+                    self.api_url, 
+                    headers=headers, 
+                    json={"query": mutation_create, "variables": variables_create}
+                )
+                result1 = resp1.json()
+            
+            if "errors" in result1:
+                return {"status": "error", "message": str(result1["errors"])}
+            
+            create_result = result1.get("data", {}).get("productCreate", {})
+            errors = create_result.get("userErrors", [])
+            
+            if errors:
+                return {"status": "error", "message": errors[0]["message"]}
+                
+            # STEP 2: Update the Default Variant with SKU and Price
+            try:
+                product_data = create_result.get("product", {})
+                product_id = product_data["id"]
+                variant_id = product_data["variants"]["edges"][0]["node"]["id"]
+                
+                mutation_variant = """
+                mutation productVariantUpdate($input: ProductVariantInput!) {
+                  productVariantUpdate(input: $input) {
+                    productVariant {
+                      id
+                    }
+                    userErrors {
+                      field
+                      message
+                    }
+                  }
+                }
+                """
+                
+                variables_variant = {
+                    "input": {
+                        "id": variant_id,
+                        "price": price,
+                        "sku": p.sku or sku
+                    }
+                }
+                
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp2 = await client.post(
+                        self.api_url, 
+                        headers=headers, 
+                        json={"query": mutation_variant, "variables": variables_variant}
+                    )
+                    res_var = resp2.json()
+                    
+                    var_errs = res_var.get("data", {}).get("productVariantUpdate", {}).get("userErrors", [])
+                    if var_errs:
+                        add_bridge_log(f"⚠️ Errore aggiornamento Prezzo/SKU per {sku}: {var_errs[0]['message']}")
+                        return {"status": "error", "message": f"Prezzo non aggiornato: {var_errs[0]['message']}"}
+                        
+            except Exception as variant_err:
+                add_bridge_log(f"⚠️ Eccezione durante l'aggiornamento variante per {sku}: {str(variant_err)}")
+                
+            # STEP 3: Handle Image Upload if available
+            try:
+                if p.matched_images_json:
+                    imgs = json.loads(p.matched_images_json)
+                    if imgs and len(imgs) > 0:
+                        drive_file_id = imgs[0]
+                        
+                        # Use a public Google Drive redirect link
+                        public_img_url = f"https://drive.google.com/uc?export=download&id={drive_file_id}"
+                        
+                        mutation_media = """
+                        mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+                          productCreateMedia(media: $media, productId: $productId) {
+                            media {
+                              mediaContentType
+                              status
+                            }
+                            mediaUserErrors {
+                              field
+                              message
+                            }
+                          }
+                        }
+                        """
+                        
+                        variables_media = {
+                            "productId": product_id,
+                            "media": [
+                                {
+                                    "originalSource": public_img_url,
+                                    "mediaContentType": "IMAGE"
+                                }
+                            ]
+                        }
+                        
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            resp3 = await client.post(
+                                self.api_url, 
+                                headers=headers, 
+                                json={"query": mutation_media, "variables": variables_media}
+                            )
+                            res_media = resp3.json()
+                            media_errs = res_media.get("data", {}).get("productCreateMedia", {}).get("mediaUserErrors", [])
+                            if media_errs:
+                                add_bridge_log(f"⚠️ Immagine Shopify respinta: {media_errs[0]['message']}")
+            except Exception as img_err:
+                add_bridge_log(f"⚠️ Impossibile caricare immagine per {sku}: {str(img_err)}")
+                
+            # Aggiorniamo lo stato nel PIM locale
+            p.status = ProductStatus.Published
+            db.commit()
+            add_bridge_log(f"✅ Prodotto {sku} pubblicato con successo su Shopify.")
+                
+            return {"status": "ok", "message": "Prodotto pubblicato con successo come BOZZA."}
+        except Exception as e:
+            add_bridge_log(f"❌ Errore durante la pubblicazione di {sku}: {str(e)}")
+            return {"status": "error", "message": str(e)}
+        finally:
+            db.close()
 
     async def import_product_to_pim(self, shopify_data: dict, mode: str = "standard"):
         """

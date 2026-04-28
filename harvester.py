@@ -36,24 +36,28 @@ class HarvesterEngine:
 
     @staticmethod
     def calculate_integrity(item):
-        """Calcola il punteggio di integrità Shopify-Ready (0-100)"""
+        """Calcola il punteggio di integrità (0-100) basato sulla qualità reale dei dati."""
         score = 0
         
-        # Dati Master (50% totale)
-        if item.price and item.price > 0: score += 10
+        # 1. Fondamentali Master (40%)
+        if item.price and item.price > 0: score += 15
         if item.condition_grade and item.condition_grade.strip(): score += 10
-        if item.accessories_included and item.accessories_included.strip(): score += 10
-        if (item.dimensions and item.dimensions.strip()) or (item.size and item.size.strip()): score += 10
-        if item.fit and item.fit.strip(): score += 10
+        if (item.dimensions and item.dimensions.strip()) or (item.size and item.size.strip()): score += 15
         
-        # Arricchimento AI (40% totale)
-        if item.seo_title and item.seo_title.strip(): score += 10
-        if item.ai_description_it and item.ai_description_it.strip(): score += 15
-        if item.tags and item.tags.strip(): score += 10
+        # 2. Arricchimento AI (50%)
+        if item.seo_title and len(item.seo_title.strip()) > 10: score += 10
+        
+        desc = (item.ai_description_it or "").strip()
+        if len(desc) > 200: score += 25  # Descrizione corposa
+        elif len(desc) > 50: score += 15 # Descrizione media
+        elif len(desc) > 0: score += 5   # Descrizione minima
+        
+        if item.tags and len(item.tags.strip()) > 5: score += 10
         if (item.material and item.material.strip()) or (item.color and item.color.strip()): score += 5
         
-        # Assets (10%)
-        if item.matched_images_json and item.matched_images_json != "[]": score += 10
+        # 3. Media Assets (10%)
+        if item.matched_images_json and item.matched_images_json != "[]": 
+            score += 10
         
         return float(min(score, 100))
 
@@ -276,7 +280,6 @@ class HarvesterEngine:
                 # Eseguiamo il task asincrono nel thread corrente
                 try:
                     asyncio.run(self._enrich_single_product(pid))
-                    PROCESS_PROGRESS["completed"] += 1
                 except Exception as ex_coro:
                     add_log(f"⚠️ Errore nel coroutine engine per ID {pid}: {str(ex_coro)}")
                 
@@ -345,21 +348,21 @@ class HarvesterEngine:
                     "Analizza i dati del prodotto e restituisci SOLO un oggetto JSON valido.\n"
                     "FORMATO JSON RICHIESTO:\n"
                     "{\n"
-                    "  \"seo_title\": \"Titolo in ITALIANO (es. 'Mocassini Gucci Uomo'). NO parole come 'Shop', 'Buy', 'Designer'.\",\n"
-                    "  \"material\": \"SOLO il nome del materiale primario in 1-2 parole (es. 'Pelle', 'Camoscio', 'Oro'). Sposta tutti i dettagli aggiuntivi (es. 'lavorato a mano', 'morsetto') nella 'ai_description_it'.\",\n"
+                    "  \"seo_title\": \"Titolo SEO (es. 'Gucci Mini Ophidia'). Mantieni sempre parole come Mini, Nano, Micro, Medium, Large. NO categoria (NO 'Borsa').\",\n"
+                    "  \"material\": \"SOLO il nome del materiale primario in 1-2 parole (es. 'Pelle', 'Tela', 'Oro'). Sposta tutti i dettagli aggiuntivi nella 'ai_description_it'.\",\n"
                     "  \"dimensions\": \"Misure\",\n"
                     "  \"product_type\": \"Categoria specifica\",\n"
                     "  \"tags\": \"Tag minuscoli, RIGOROSAMENTE IN ITALIANO (es. 'pelle', 'tracolla', 'catena'). NO parole fashion/vintage.\",\n"
-                    "  \"ai_description_it\": \"Descrizione lusso ed emozionale in italiano. Usa un vocabolario moderno dell'alta moda: vieta parole arcaiche o strane come 'calzari' (usa 'calzature' o 'mocassini'). NON inventare pattern o fantasie inesistenti. Concentrati sui veri dettagli iconici del prodotto (es. esalta il celebre 'morsetto dorato' per i mocassini Gucci). ATTENZIONE: Usa un italiano perfetto e professionale. NON usare MAI termini come 'pellina' (usa 'pelle'), e traduci sempre 'loafers' in 'mocassini'.\"\n"
+                    "  \"ai_description_it\": \"Descrizione lusso ed emozionale in italiano. Usa un vocabolario moderno dell'alta moda. NON inventare pattern o fantasie inesistenti. Concentrati sui dettagli forniti. ATTENZIONE: Usa un italiano perfetto e professionale.\"\n"
                     "}\n"
                     "RULES:\n"
-                    "1. 'seo_title' must be in Title Case (Capitalize each word).\n"
+                    "1. 'seo_title' MUST be ONLY Brand + Model in Title Case (Capitalize each word).\n"
                     "2. 'tags' must be short, lowercase, keywords for Shopify. TRADUCI TUTTO IN ITALIANO.\n"
                     "3. 'ai_description_it' must use STRICT Italian gender agreement (singular). "
-                    f"If the product is a '{item.category}', it's likely a 'Borsa' (feminine singular) or 'Zaino' (masculine singular). "
+                    f"If the product is a '{item.category}', use the correct Italian gender (e.g. 'la borsa' if feminine, 'lo zaino' if masculine). "
                     "NEVER use plural like 'Le Borse' unless it's a set of items.\n"
                     "4. RESPECT EXISTING DATA (SOURCE TRUTH): Se i 'Dati Catalogo' contengono già una Taglia, un Materiale o un Colore, NON DEVI CAMBIARLI. "
-                    "Non inventare conversioni (es. 8 UK / 9 US) se hai già un numero EU (es. 41). Mantieni il dato originale del catalogo come priorità assoluta.\n"
+                    "Non inventare conversioni se hai già un numero EU. Mantieni il dato originale del catalogo come priorità assoluta.\n"
                     "5. MANDATORY TAGS: Includi SEMPRE il Brand, il Genere (scegli RIGOROSAMENTE tra 'uomo' o 'donna', mai entrambi nello stesso tag) e il tipo di prodotto.\n"
                     f"Dati Catalogo: Brand: '{item.brand}', Modello: '{item.model}', Taglia Originale: '{item.size or item.dimensions}', Categoria: '{item.category}'.\n"
                     f"Dati Web (da usare solo per arricchire la descrizione): {combined_text}"

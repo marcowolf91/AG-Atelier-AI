@@ -15,10 +15,69 @@
     </div>
 </div>
 
-<div id="shopify-catalog-container">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div class="glass-panel" style="padding: 0; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid var(--glass-border); flex: 1; max-width: 750px;">
+        <button onclick="filterCatalog('all')" id="tab-all" class="btn tab-btn active" style="flex: 1; border-radius: 0; border: none; border-right: 1px solid var(--glass-border); padding: 16px;">
+            <i class="ph-duotone ph-list-dashes"></i> Tutti i Prodotti
+        </button>
+        <button onclick="filterCatalog('shopify')" id="tab-shopify" class="btn tab-btn" style="flex: 1; border-radius: 0; border: none; border-right: 1px solid var(--glass-border); padding: 16px;">
+            <i class="ph-duotone ph-storefront"></i> Vetrina Shopify
+        </button>
+        <button onclick="filterCatalog('published-local')" id="tab-published-local" class="btn tab-btn" style="flex: 1; border-radius: 0; border: none; border-right: 1px solid var(--glass-border); padding: 16px;">
+            <i class="ph-duotone ph-check-circle"></i> Locali Pubblicati
+        </button>
+        <button onclick="filterCatalog('local')" id="tab-local" class="btn tab-btn" style="flex: 1; border-radius: 0; border: none; padding: 16px;">
+            <i class="ph-duotone ph-upload-simple"></i> Da Pubblicare (Locali)
+        </button>
+    </div>
+    
+    <div style="display: flex; gap: 12px;">
+        <!-- Custom Dropdown: Stato -->
+        <div class="custom-dropdown" id="dropdown-status">
+            <div class="dropdown-header" onclick="toggleDropdown('status-options')">
+                <span id="status-label">Stato: Tutti</span>
+                <i class="ph ph-caret-down"></i>
+            </div>
+            <div class="dropdown-options" id="status-options" style="display:none;">
+                <div class="dropdown-option active" onclick="selectOption(event, 'status', 'all', 'Stato: Tutti')">Stato: Tutti</div>
+                <div class="dropdown-option" onclick="selectOption(event, 'status', 'active', 'Solo Attivi')">Solo Attivi</div>
+                <div class="dropdown-option" onclick="selectOption(event, 'status', 'draft', 'Solo Bozze')">Solo Bozze</div>
+                <div class="dropdown-option" onclick="selectOption(event, 'status', 'local_only', 'Da Pubblicare')">Da Pubblicare</div>
+            </div>
+        </div>
+        
+        <!-- Custom Dropdown: Scorte -->
+        <div class="custom-dropdown" id="dropdown-stock">
+            <div class="dropdown-header" onclick="toggleDropdown('stock-options')">
+                <span id="stock-label">Scorte: Tutte</span>
+                <i class="ph ph-caret-down"></i>
+            </div>
+            <div class="dropdown-options" id="stock-options" style="display:none;">
+                <div class="dropdown-option active" onclick="selectOption(event, 'stock', 'all', 'Scorte: Tutte')">Scorte: Tutte</div>
+                <div class="dropdown-option" onclick="selectOption(event, 'stock', 'in_stock', 'In Stock (>0)')">In Stock (>0)</div>
+                <div class="dropdown-option" onclick="selectOption(event, 'stock', 'out_of_stock', 'Esauriti (0)')">Esauriti (0)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="shopify-catalog-container" style="padding-bottom: 100px;">
     <div style="padding: 100px; text-align: center; color: var(--text-secondary);">
         <i class="ph ph-circle-notch ph-spin" style="font-size: 2.5rem; margin-bottom: 20px; display: block; margin-left:auto; margin-right:auto;"></i>
         <p style="font-weight: 600; letter-spacing: 1px;">CARICAMENTO CATALOGO SHOPIFY...</p>
+    </div>
+</div>
+
+<!-- Floating Action Bar for Batch Import -->
+<div id="batch-toolbar" class="glass-panel" style="display: none; position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 16px 32px; border-radius: 50px; align-items: center; gap: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 1px solid var(--accent-gold); background: rgba(18, 18, 18, 0.95);">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(212,175,55,0.2); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-weight: 800;" id="batch-count">0</div>
+        <div style="font-weight: 700; color: #fff; font-size: 0.9rem;">Prodotti Selezionati</div>
+    </div>
+    <div style="width: 1px; height: 24px; background: rgba(255,255,255,0.1);"></div>
+    <div style="display: flex; gap: 12px;">
+        <button onclick="clearBatchSelection()" class="btn glass-btn" style="border-radius: 20px; font-size: 0.8rem;">Annulla</button>
+        <button onclick="importSelectedBatch()" class="btn attr-primary" style="border-radius: 20px; font-size: 0.8rem; font-weight: 800;"><i class="ph ph-upload-simple"></i> Pubblica su Shopify</button>
     </div>
 </div>
 
@@ -63,9 +122,56 @@
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; }
 .mirror-item { transition: all 0.2s; border-left: 2px solid transparent; }
 .mirror-item:hover { border-left-color: var(--accent-gold); background: rgba(255,255,255,0.02); }
+.tab-btn { background: transparent; color: var(--text-secondary); transition: all 0.2s; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.tab-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.tab-btn.active { background: rgba(212,175,55,0.1) !important; color: var(--accent-gold) !important; border-bottom: 2px solid var(--accent-gold) !important; }
+
+/* Custom Dropdown Styling */
+.custom-dropdown { position: relative; min-width: 160px; user-select: none; }
+.dropdown-header { height: 48px; border-radius: 12px; background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border); padding: 0 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); transition: all 0.2s; }
+.dropdown-header:hover { border-color: var(--accent-gold); color: #fff; }
+.dropdown-options { position: absolute; top: 100%; left: 0; right: 0; margin-top: 8px; background: rgba(18,18,18,0.95); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+.dropdown-option { padding: 14px 16px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+.dropdown-option:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.dropdown-option.active { background: rgba(212,175,55,0.1); color: var(--accent-gold); border-left: 2px solid var(--accent-gold); }
 </style>
 
 <script>
+let globalProducts = [];
+let currentFilter = 'all';
+let currentFilterStatus = 'all';
+let currentFilterStock = 'all';
+
+// Custom Dropdown Logic
+function toggleDropdown(id) {
+    document.querySelectorAll('.dropdown-options').forEach(el => {
+        if(el.id !== id) el.style.display = 'none';
+    });
+    const el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function selectOption(event, type, value, label) {
+    document.getElementById(`${type}-label`).innerText = label;
+    document.getElementById(`${type}-options`).style.display = 'none';
+    
+    const options = document.getElementById(`${type}-options`).querySelectorAll('.dropdown-option');
+    options.forEach(opt => opt.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    
+    if(type === 'status') currentFilterStatus = value;
+    if(type === 'stock') currentFilterStock = value;
+    
+    applyFilters();
+}
+
+// Chiude i dropdown cliccando fuori
+document.addEventListener('click', (e) => {
+    if(!e.target.closest('.custom-dropdown')) {
+        document.querySelectorAll('.dropdown-options').forEach(el => el.style.display = 'none');
+    }
+});
+
 async function refreshShopifyCatalog() {
     const btn = document.getElementById('btn-refresh');
     const container = document.getElementById('shopify-catalog-container');
@@ -76,7 +182,10 @@ async function refreshShopifyCatalog() {
     try {
         const response = await fetch('/api/shopify/catalog');
         const data = await response.json();
-        if (data.status === 'ok') renderCatalog(data.products);
+        if (data.status === 'ok') {
+            globalProducts = data.products;
+            applyFilters();
+        }
         else container.innerHTML = `<div class="glass-panel" style="color:#ef4444; padding:32px; text-align:center;">Errore: ${data.message}</div>`;
     } catch (err) {
         showToast("Errore di connessione a Shopify.");
@@ -86,15 +195,76 @@ async function refreshShopifyCatalog() {
     }
 }
 
+function filterCatalog(tab) {
+    currentFilter = tab;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    applyFilters();
+}
+
+function applyFilters() {
+    const searchInput = document.getElementById('global-search');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    
+    let filtered = globalProducts.filter(p => {
+        let safeSku = p.sku || 'N/A';
+        let safeTitle = p.title || 'Senza Nome';
+        let prodType = p.product_type || 'Non categorizzato';
+        
+        // Text Match
+        const matchesSearch = safeTitle.toLowerCase().includes(searchTerm) || 
+                              safeSku.toLowerCase().includes(searchTerm) || 
+                              prodType.toLowerCase().includes(searchTerm);
+        
+        if(!matchesSearch) return false;
+        
+        // Tab Match
+        const isLocal = p.status === 'LOCAL ONLY';
+        if(currentFilter === 'shopify' && isLocal) return false;
+        if(currentFilter === 'local' && !isLocal) return false;
+        if(currentFilter === 'published-local' && !p.is_local_published) return false;
+
+        // Status Match
+        if(currentFilterStatus === 'active' && p.status !== 'ACTIVE') return false;
+        if(currentFilterStatus === 'draft' && p.status !== 'DRAFT') return false;
+        if(currentFilterStatus === 'local_only' && !isLocal) return false;
+        if(currentFilterStatus === 'published_local' && !p.is_local_published) return false;
+
+        // Stock Match
+        if(currentFilterStock === 'in_stock' && p.inventory <= 0) return false;
+        if(currentFilterStock === 'out_of_stock' && p.inventory > 0) return false;
+        
+        return true;
+    });
+    
+    // Uncheck "Select All" when filtering
+    const selectAllCb = document.getElementById('selectAllCheckbox');
+    if(selectAllCb) selectAllCb.checked = false;
+    updateBatchToolbar();
+    
+    renderCatalog(filtered);
+}
+
+// Bind Global Search Input
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('global-search');
+    if(searchInput) {
+        searchInput.addEventListener('input', applyFilters);
+    }
+});
+
 function renderCatalog(products) {
     const container = document.getElementById('shopify-catalog-container');
     if (!products || products.length === 0) {
-        container.innerHTML = '<div style="padding:60px; text-align:center; color:var(--text-secondary);">Nessun prodotto trovato su Shopify.</div>';
+        container.innerHTML = '<div style="padding:60px; text-align:center; color:var(--text-secondary);">Nessun prodotto trovato per i filtri selezionati.</div>';
         return;
     }
 
     let html = `
-        <div style="display: grid; grid-template-columns: 60px 2.5fr 1fr 1fr 1.5fr 1fr auto; gap: 16px; padding: 0 24px 12px; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+        <div style="display: grid; grid-template-columns: 40px 60px 2.5fr 1fr 1fr 1.5fr 1fr auto; gap: 16px; padding: 0 24px 12px; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+            <div style="display: flex; align-items: center; justify-content: center;">
+                <input type="checkbox" id="selectAllCheckbox" onchange="toggleAllCheckboxes(this)" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-gold);">
+            </div>
             <div>Media</div>
             <div>Prodotto</div>
             <div>Stato</div>
@@ -109,17 +279,54 @@ function renderCatalog(products) {
     products.forEach(p => {
         let safeSku = p.sku || 'N/A';
         let safeTitle = p.title || 'Senza Nome';
-        let syncStatus = safeSku.includes('DIF') ? 'divergent' : (Math.random() > 0.5 ? 'matched' : 'new');
+        
+        let syncStatus = 'matched';
+        if (p.is_local_published) syncStatus = 'published_local';
+        else if (p.status === 'LOCAL ONLY') syncStatus = 'new';
+        else if (safeSku.includes('DIF')) syncStatus = 'divergent';
+
         let badgeType = syncStatus === 'matched' ? 'ready' : (syncStatus === 'divergent' ? 'warn' : 'processing');
         let icon = syncStatus === 'matched' ? 'check-circle' : (syncStatus === 'divergent' ? 'warning' : 'sparkle');
-        let label = syncStatus === 'matched' ? 'ALLINEATO' : (syncStatus === 'divergent' ? 'DIVERGENTE' : 'SOLO CLOUD');
+        let label = syncStatus === 'matched' ? 'Sincronizzato' : (syncStatus === 'divergent' ? 'Conflitto Dati' : 'Nuovo Locale');
+        let customBadgeStyle = '';
+
+        if (syncStatus === 'published_local') {
+            icon = 'check-circle';
+            label = 'Pubblicato Locale';
+            customBadgeStyle = 'color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.1);';
+        }
 
         // Traduzione e Colore Stato Shopify
-        let shopifyStatusText = p.status === 'ACTIVE' ? 'Attivo' : (p.status === 'DRAFT' ? 'Bozza' : p.status);
+        let shopifyStatusText = p.status === 'ACTIVE' ? 'Attivo' : (p.status === 'DRAFT' ? 'Bozza' : (p.status === 'LOCAL ONLY' ? 'Non Pubblicato' : p.status));
         let shopifyStatusBadge = p.status === 'ACTIVE' ? 'background: rgba(16, 185, 129, 0.2); color: #10b981;' : 'background: rgba(255, 255, 255, 0.1); color: #fff;';
 
+        // Logica Contestuale: Solo i Prodotti Locali "Da Pubblicare" hanno la Checkbox e il bottone "Importa"
+        let checkboxHtml = '';
+        let actionHtml = '';
+        let rowStyle = '';
+
+        if (p.status === 'LOCAL ONLY') {
+            checkboxHtml = `<input type="checkbox" class="product-checkbox" value="${safeSku}" data-title="${safeTitle.replace(/"/g, '&quot;')}" data-price="${p.price || 0}" onchange="updateBatchToolbar()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-gold);">`;
+            actionHtml = `
+                <button onclick="handleImport('${safeSku}', '${safeTitle.replace(/'/g, "\\'")}', ${p.price || 0}, '${syncStatus}')" class="btn attr-primary" style="padding: 8px 16px; font-size: 0.75rem; font-weight: 700;">
+                    <i class="ph ph-upload-simple"></i> Pubblica
+                </button>`;
+            
+            // Highlights local products explicitly so they stand out
+            rowStyle = 'background: rgba(212,175,55,0.05); border: 1px solid rgba(212,175,55,0.2);';
+        } else {
+            checkboxHtml = `<i class="ph ph-minus" style="color: rgba(255,255,255,0.1);"></i>`;
+            actionHtml = `
+                <span style="font-size: 0.7rem; color: var(--text-secondary); font-weight: 600; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="ph-fill ph-check-circle" style="color: #10b981;"></i> Già Online
+                </span>`;
+        }
+
         html += `
-            <div class="glass-panel mirror-item" style="padding: 16px 24px; display: grid; grid-template-columns: 60px 2.5fr 1fr 1fr 1.5fr 1fr auto; gap: 16px; align-items: center;">
+            <div class="glass-panel mirror-item" style="padding: 16px 24px; display: grid; grid-template-columns: 40px 60px 2.5fr 1fr 1fr 1.5fr 1fr auto; gap: 16px; align-items: center; ${rowStyle}">
+                <div style="display: flex; align-items: center; justify-content: center;">
+                    ${checkboxHtml}
+                </div>
                 <div style="width: 50px; height: 50px; border-radius: 8px; background: rgba(255,255,255,0.05); overflow:hidden; border: 1px solid var(--glass-border);">
                     ${p.image ? `<img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">` : `<i class="ph-duotone ph-image" style="font-size:1.5rem; color:#444; display:block; margin: 12px auto; text-align:center;"></i>`}
                 </div>
@@ -141,14 +348,12 @@ function renderCatalog(products) {
                     ${p.product_type}
                 </div>
                 <div>
-                    <span class="badge ${badgeType}" style="font-size: 0.6rem;">
+                    <span class="badge ${badgeType}" style="font-size: 0.6rem; ${customBadgeStyle}">
                         <i class="ph ph-${icon}"></i> ${label}
                     </span>
                 </div>
                 <div style="text-align: right;">
-                    <button onclick="handleImport('${safeSku}', '${safeTitle.replace(/'/g, "\\'")}', ${p.price || 0}, '${syncStatus}')" class="btn glass-btn" style="padding: 8px 16px; font-size: 0.75rem;">
-                        <i class="ph ph-download-simple"></i> Importa
-                    </button>
+                    ${actionHtml}
                 </div>
             </div>
         `;
@@ -156,6 +361,76 @@ function renderCatalog(products) {
 
     html += `</div>`;
     container.innerHTML = html;
+}
+
+// Logic for Checkboxes and Batch Import
+function toggleAllCheckboxes(source) {
+    const checkboxes = document.querySelectorAll('.product-checkbox');
+    checkboxes.forEach(cb => cb.checked = source.checked);
+    updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+    const selected = document.querySelectorAll('.product-checkbox:checked');
+    const toolbar = document.getElementById('batch-toolbar');
+    const countLabel = document.getElementById('batch-count');
+    
+    if (selected.length > 0) {
+        toolbar.style.display = 'flex';
+        countLabel.innerText = selected.length;
+    } else {
+        toolbar.style.display = 'none';
+        const selectAllCb = document.getElementById('selectAllCheckbox');
+        if(selectAllCb) selectAllCb.checked = false;
+    }
+}
+
+function clearBatchSelection() {
+    const checkboxes = document.querySelectorAll('.product-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    const selectAllCb = document.getElementById('selectAllCheckbox');
+    if(selectAllCb) selectAllCb.checked = false;
+    updateBatchToolbar();
+}
+
+async function importSelectedBatch() {
+    const selected = document.querySelectorAll('.product-checkbox:checked');
+    if(selected.length === 0) return;
+    
+    const btn = document.querySelector('#batch-toolbar .attr-primary');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Pubblicazione...';
+    btn.disabled = true;
+    
+    showToast(`🚀 Avvio pubblicazione batch di ${selected.length} prodotti...`);
+    
+    let successCount = 0;
+    
+    for(let i=0; i<selected.length; i++) {
+        const cb = selected[i];
+        const sku = cb.value;
+        const title = cb.getAttribute('data-title');
+        const price = parseFloat(cb.getAttribute('data-price')) || 0;
+        
+        try {
+            const res = await fetch('/api/shopify/publish', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sku, title, price, overwrite: false})
+            });
+            const data = await res.json();
+            if(data.status === 'ok') successCount++;
+        } catch(e) {
+            console.error(e);
+        }
+    }
+    
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+    
+    showToast(`✅ Batch completato: ${successCount}/${selected.length} caricati con successo.`, 'info');
+    clearBatchSelection();
+    refreshShopifyCatalog();
 }
 
 function handleImport(sku, title, price, status) {
@@ -174,18 +449,20 @@ function handleImport(sku, title, price, status) {
 
 async function executeImport(sku, title, price, overwrite = false) {
     try {
-        const res = await fetch('/api/shopify/import', {
+        const res = await fetch('/api/shopify/publish', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({sku, title, price, overwrite})
         });
         const data = await res.json();
         if(data.status === 'ok') {
-            showToast(`✅ Prodotto ${sku} allineato correttamente.`);
+            showToast(`✅ Prodotto ${sku} pubblicato correttamente come Bozza.`);
             closeTriage();
             refreshShopifyCatalog();
+        } else {
+            showToast(`❌ Errore Shopify: ${data.message}`);
         }
-    } catch(e) { showToast("Errore importazione."); }
+    } catch(e) { showToast("Errore di rete durante la pubblicazione."); }
 }
 
 function resolveConflict(priority) {

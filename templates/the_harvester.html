@@ -46,9 +46,9 @@
                 <th style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleAll(this)"></th>
                 <th onclick="sortTable('pim')" style="cursor: pointer;">Sorgente PIM <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
                 <th onclick="sortTable('category')" style="cursor: pointer;">Tipo Prodotto <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
-                <th onclick="sortTable('score')" style="cursor: pointer;">Confidence Meta <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
+                <th onclick="sortTable('score')" style="cursor: pointer;">Integrità Scheda <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
                 <th>Mapping SEO</th>
-                <th>Assets (Drive)</th>
+                <th>Parametri Tecnici</th>
                 <th style="text-align: right; padding-right: 24px;">Azioni</th>
             </tr>
         </thead>
@@ -61,7 +61,11 @@
                 data-pim="{{ p.brand }} {{ p.model }}" 
                 data-category="{{ (p.category or '')|e }}"
                 data-score="{{ score }}">
-                <td style="padding-left:24px; font-size: 0.7rem; color: var(--accent-gold); font-weight: 800; font-family: monospace;">#{{ p.id }}</td>
+                {% set parts = (p.source_sheet or 'UNK').split() %}
+                {% set initials = (parts[0][0]|upper if parts|length > 0 else '') ~ (parts[1][0]|upper if parts|length > 1 else '') %}
+                <td style="padding-left:24px; font-size: 0.75rem; color: var(--accent-gold); font-weight: 800; font-family: monospace;" title="Foglio: {{ p.source_sheet }} | Riga: {{ p.original_sheets_row or p.id }}">
+                    <span style="opacity:0.6; font-size: 0.65rem;">{{ initials }}-</span>{{ p.original_sheets_row or p.id }}
+                </td>
                 <td><input type="checkbox" class="product-checkbox" value="{{ p.id }}" onchange="updateSelectionBar()"></td>
                 <td>
                     <div style="font-weight: 700; color: #fff; font-size: 0.9rem;">{{ p.brand or '-' }}</div>
@@ -76,9 +80,9 @@
                     <div id="score-content-{{ p.id }}">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div style="width: 40px; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px;">
-                                <div style="width: {{ score }}%; height: 100%; background: {% if score > 80 %}#10b981{% elif score > 40 %}#f59e0b{% else %}#ef4444{% endif %};"></div>
+                                <div style="width: {{ score }}%; height: 100%; background: {% if score > 75 %}#10b981{% elif score > 50 %}#fbbf24{% elif score > 30 %}#f59e0b{% else %}#ef4444{% endif %};"></div>
                             </div>
-                            <span style="font-size: 0.7rem; font-weight: 800; color: {% if score > 80 %}#10b981{% elif score > 40 %}#f59e0b{% else %}#ef4444{% endif %};">{{ score }}%</span>
+                            <span style="font-size: 0.7rem; font-weight: 800; color: {% if score > 75 %}#10b981{% elif score > 50 %}#fbbf24{% elif score > 30 %}#f59e0b{% else %}#ef4444{% endif %};">{{ score }}%</span>
                         </div>
                     </div>
                 </td>
@@ -109,13 +113,14 @@
                         {% endif %}
                     </div>
                 </td>
-                <td id="img-col-{{ p.id }}">
-                    {% if p.image_match_score and p.image_match_score > 0 %}
-                        <div class="asset-count-badge">
-                            <i class="ph-fill ph-image"></i> {{ p.image_match_score }} FOTO
+                <td id="tech-col-{{ p.id }}">
+                    {% if p.material or p.tags %}
+                        <div style="font-size: 0.75rem; color: #fff; line-height: 1.4;">
+                            {% if p.material %}<span style="color: var(--accent-gold); font-weight: 700;">Mat:</span> {{ p.material }}<br>{% endif %}
+                            {% if p.tags %}<span style="color: #10b981; font-weight: 700;">Tags:</span> <span style="font-size: 0.7rem; color: var(--text-secondary);">{{ p.tags[:35] }}{% if p.tags|length > 35 %}...{% endif %}</span>{% endif %}
                         </div>
                     {% else %}
-                        <span style="color: rgba(255,255,255,0.2); font-size: 0.7rem;">SCOOPING...</span>
+                        <span style="color: rgba(255,255,255,0.2); font-size: 0.7rem;">IN ATTESA...</span>
                     {% endif %}
                 </td>
                 <td style="text-align: right; padding-right: 24px;">
@@ -526,6 +531,12 @@
         const cur = p.current || {};
         const title = document.getElementById('spotlight-title');
         if(title) title.innerHTML = `Revisione Prodotto <span style="color: var(--accent-gold);">${spotlightIndex + 1} di ${count}</span>`;
+        
+        let sheetParts = (p.source_sheet || 'UNK').split(' ');
+        let initials = (sheetParts.length > 0 && sheetParts[0].length > 0 ? sheetParts[0][0].toUpperCase() : '') + 
+                       (sheetParts.length > 1 && sheetParts[1].length > 0 ? sheetParts[1][0].toUpperCase() : '');
+        let displayId = `<span style="opacity:0.6;">${initials}-</span>${p.original_sheets_row || p.id}`;
+
         const div = document.createElement('div');
         div.className = 'glass-panel spotlight-item';
         div.innerHTML = `
@@ -535,7 +546,7 @@
                     <div style="font-weight: 800; color: #fff; font-size: 1.4rem;">${p.brand} ${p.model}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="color: #fff; font-family: monospace; font-weight: 700; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">#${p.id}</div>
+                    <div style="color: #fff; font-family: monospace; font-weight: 700; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;" title="Foglio: ${p.source_sheet} | Riga: ${p.original_sheets_row || p.id}">${displayId}</div>
                 </div>
             </div>
             <div class="comparison-grid" style="display: grid; grid-template-columns: 120px 1fr 1.2fr 60px; gap: 20px; align-items: center;">
