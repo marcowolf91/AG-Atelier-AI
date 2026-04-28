@@ -182,18 +182,55 @@
     {% endif %}
 
     <!-- AI PROVIDER KEYS -->
-    <div class="page-section-header"><i class="ph-duotone ph-key"></i> Passport: AI Engine API Keys</div>
-    <div class="glass-panel" style="padding: 32px; display: flex; flex-direction: column; gap: 16px;">
-        <form method="POST" action="/api/settings/keys" class="key-row">
-            <div class="key-brand"><img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg"> <span>OpenAI Service</span></div>
-            <input type="text" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}" style="flex:1;">
-            <button type="submit" class="btn glass-btn">Aggiorna</button>
-        </form>
-        <form method="POST" action="/api/settings/keys" class="key-row">
-            <div class="key-brand"><i class="ph ph-google-logo" style="font-size: 24px;"></i> <span>Google Gemini</span></div>
-            <input type="text" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}" style="flex:1;">
-            <button type="submit" class="btn glass-btn">Aggiorna</button>
-        </form>
+    <div class="page-section-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span><i class="ph-duotone ph-key"></i> Passport: AI Engine API Keys</span>
+        <span style="font-size: 0.6rem; opacity: 0.5; text-transform: uppercase; letter-spacing: 2px;">Core Secure System</span>
+    </div>
+
+    <div class="glass-panel" style="padding: 32px; display: flex; flex-direction: column; gap: 20px; border-top: 1px solid rgba(212,175,55,0.2);">
+        
+        <!-- OPENAI -->
+        <div class="key-card" style="display: flex; align-items: center; gap: 20px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s;">
+            <div class="key-brand" style="width: 180px; display: flex; align-items: center; gap: 12px;">
+                <div class="status-dot {{ 'status-online' if auth_status.openai_val else 'status-offline' }}"></div>
+                <img src="https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg" style="width: 24px; filter: grayscale(1) invert(1);"> 
+                <span style="font-weight: 700; font-size: 0.8rem;">OpenAI Intelligence</span>
+            </div>
+            <form method="POST" action="/api/settings/keys" style="flex:1; display: flex; gap: 12px; align-items: center;">
+                <input type="text" name="openai" placeholder="sk-..." class="glass-input" value="{{ auth_status.openai_val or '' }}" style="flex:1; font-family: monospace; font-size: 0.75rem; letter-spacing: 1px;">
+                <button type="submit" class="btn-action-small">Aggiorna</button>
+                <button type="button" onclick="testKey('openai')" class="btn-test"><i class="ph ph-lightning"></i> Test</button>
+            </form>
+        </div>
+
+        <!-- GEMINI -->
+        <div class="key-card" style="display: flex; align-items: center; gap: 20px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s;">
+            <div class="key-brand" style="width: 180px; display: flex; align-items: center; gap: 12px;">
+                <div class="status-dot {{ 'status-online' if auth_status.gemini_val else 'status-offline' }}"></div>
+                <i class="ph ph-google-logo" style="font-size: 24px; color: #4285F4;"></i> 
+                <span style="font-weight: 700; font-size: 0.8rem;">Google Gemini AI</span>
+            </div>
+            <form method="POST" action="/api/settings/keys" style="flex:1; display: flex; gap: 12px; align-items: center;">
+                <input type="text" name="gemini" placeholder="AIza..." class="glass-input" value="{{ auth_status.gemini_val or '' }}" style="flex:1; font-family: monospace; font-size: 0.75rem; letter-spacing: 1px;">
+                <button type="submit" class="btn-action-small">Aggiorna</button>
+                <button type="button" onclick="testKey('gemini')" class="btn-test"><i class="ph ph-lightning"></i> Test</button>
+            </form>
+        </div>
+
+        <!-- SERPER -->
+        <div class="key-card" style="display: flex; align-items: center; gap: 20px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s;">
+            <div class="key-brand" style="width: 180px; display: flex; align-items: center; gap: 12px;">
+                <div class="status-dot {{ 'status-online' if auth_status.serper_val else 'status-offline' }}"></div>
+                <i class="ph ph-globe-hemisphere-west" style="font-size: 24px; color: var(--accent-gold);"></i> 
+                <span style="font-weight: 700; font-size: 0.8rem;">Serper (Search)</span>
+            </div>
+            <form method="POST" action="/api/settings/keys" style="flex:1; display: flex; gap: 12px; align-items: center;">
+                <input type="text" name="serper" placeholder="Enter API Key..." class="glass-input" value="{{ auth_status.serper_val or '' }}" style="flex:1; font-family: monospace; font-size: 0.75rem; letter-spacing: 1px;">
+                <button type="submit" class="btn-action-small">Aggiorna</button>
+                <button type="button" onclick="testKey('serper')" class="btn-test"><i class="ph ph-lightning"></i> Test</button>
+            </form>
+        </div>
+
     </div>
 </div>
 
@@ -541,4 +578,75 @@ document.addEventListener("DOMContentLoaded", () => {
         refreshSystemHealth();
     });
 </script>
+<script>
+    async function testKey(service) {
+        showToast(`Testing ${service} connection...`, "info");
+        try {
+            const response = await fetch(`/api/settings/test-key?service=${service}`);
+            const data = await response.json();
+            if (data.status === 'ok') {
+                showToast(`${service.toUpperCase()} Connection Successful!`, "success");
+            } else {
+                showToast(`${service.toUpperCase()} Error: ${data.message}`, "error");
+            }
+        } catch (e) {
+            showToast("Connection test failed.", "error");
+        }
+    }
+</script>
+
+<style>
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    position: relative;
+}
+.status-online {
+    background: #10b981;
+    box-shadow: 0 0 10px rgba(16,185,129,0.6);
+}
+.status-offline {
+    background: #4b5563;
+}
+.key-card:hover {
+    background: rgba(255,255,255,0.05) !important;
+    border-color: rgba(212,175,55,0.3) !important;
+    transform: translateY(-2px);
+}
+.btn-action-small {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-action-small:hover {
+    background: #fff;
+    color: #000;
+}
+.btn-test {
+    background: rgba(212,175,55,0.1);
+    border: 1px solid rgba(212,175,55,0.2);
+    color: var(--accent-gold);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+.btn-test:hover {
+    background: var(--accent-gold);
+    color: #000;
+    box-shadow: 0 0 15px rgba(212,175,55,0.3);
+}
+</style>
 {% endblock %}

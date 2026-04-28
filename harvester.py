@@ -110,15 +110,62 @@ class HarvesterEngine:
         
         return result
 
+    async def get_ai_json(self, prompt, model_choice):
+        """Helper per ottenere risposte JSON robuste da diversi provider AI."""
+        import re
+        def extract_json(text):
+            try:
+                # Cerca il blocco { ... } più grande per estrarre il JSON puro
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                raw_json = match.group(0).strip() if match else text.strip()
+                return json.loads(raw_json)
+            except Exception as e:
+                add_log(f"⚠️ [AI-Parser] Fallimento parsing JSON da {model_choice}: {str(e)} | Raw: {text[:150]}...")
+                return {}
+
+        if model_choice == "gemini":
+            import auth_manager
+            api_key = auth_manager.get_raw_api_key("gemini")
+            # Usiamo la URL che app.py dichiara funzionante
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+            payload = {"contents": [{"parts": [{"text": prompt + "\nRISPONDI ESCLUSIVAMENTE CON UN OGGETTO JSON. NO TESTO LIBERO."}]}]}
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(url, json=payload, timeout=30.0)
+                res_data = resp.json()
+                if 'candidates' not in res_data:
+                    print(f"❌ DEBUG GEMINI API ERROR: {res_data}")
+                    add_log(f"❌ Errore Gemini API: {res_data}")
+                    return {}
+                text_out = res_data['candidates'][0]['content']['parts'][0]['text']
+                print(f"DEBUG AI RAW (Gemini): {text_out}")
+                return extract_json(text_out)
+        
+        elif model_choice == "openai":
+            api_key = get_raw_api_key("openai")
+            from openai import AsyncOpenAI
+            ai_client = AsyncOpenAI(api_key=api_key)
+            resp = await ai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={ "type": "json_object" }
+            )
+            return extract_json(resp.choices[0].message.content)
+        
+        else: # Llama o locale
+            import ollama_bridge
+            res = await ollama_bridge.generate_narrative(model_choice, prompt + "\nFORMATO RICHIESTO: JSON PURO.")
+            print(f"DEBUG AI RAW (Llama): {res}")
+            return extract_json(res)
+
     async def process_single_product(self, product_id: int, db, model_choice: str = "llama3"):
         """Esegue l'arricchimento mirato per un singolo prodotto utilizzando il core engine."""
-        # Chiudiamo la sessione passata per evitare conflitti, dato che _enrich_single_product ne apre una nuova
-        db.close()
-        await self._enrich_single_product(product_id)
+        # Usiamo la sessione passata (db) per tutto il processo
+        await self._enrich_single_product(product_id, model_choice, db_session=db)
         
-        # Recuperiamo il risultato finale per la UI
-        new_db = SessionLocal()
-        item = new_db.query(Product).filter(Product.id == product_id).first()
+        # Recuperiamo il risultato finale usando la STESSA sessione
+        item = db.query(Product).filter(Product.id == product_id).first()
+        if not item: return {"status": "error", "message": "Prodotto non trovato"}
+        
         res = {
             "seo_title": item.seo_title,
             "material": item.material,
@@ -129,20 +176,14 @@ class HarvesterEngine:
             "db_status": item.status.name if item.status else "Draft"
         }
         
-        # Recupero dati dalla Sandbox (raw_harvested_data) se presenti
         if item.raw_harvested_data:
             try:
-                import json
                 sandbox = json.loads(item.raw_harvested_data)
-                # Diamo assoluta priorità ai dati freschi della sandbox (Carantena) quando chiamiamo questa API
                 if sandbox.get("ai_description_it"): res["ai_description_it"] = sandbox.get("ai_description_it")
                 if sandbox.get("seo_title"): res["seo_title"] = sandbox.get("seo_title")
-                if sandbox.get("tags"): 
-                    s_tags = sandbox.get("tags")
-                    res["tags"] = ", ".join(s_tags) if isinstance(s_tags, list) else s_tags
+                if sandbox.get("tags"): res["tags"] = ", ".join(sandbox.get("tags")) if isinstance(sandbox.get("tags"), list) else sandbox.get("tags")
             except: pass
             
-        new_db.close()
         return res
 
     def _clean_seo_title(self, title):
@@ -174,10 +215,10 @@ class HarvesterEngine:
             "luxury", "fashion", "authentic", "glamour", "esclusivo", "prestigioso", 
             "originale", "brand", "vintage", "stile", "accessorio",
             "item", "prodotto", "collezione", "tendenza", "chic", "bag", "chain",
-            "donna/uomo", "unisex", "misto", "vari", "unknown"
+            "donna/uomo", "unisex", "misto", "vari", "unknown", "lussuoso", "elegante"
         ]
         
-        # Translation map for common English tags
+        # Translation map for common English tags and gender normalization
         translation_map = {
             "chain": "catena",
             "bag": "borsa",
@@ -187,20 +228,48 @@ class HarvesterEngine:
             "gold": "oro",
             "silver": "argento",
             "black": "nero",
-            "white": "bianco"
+            "white": "bianco",
+            "masc": "uomo",
+            "femm": "donna",
+            "male": "uomo",
+            "female": "donna",
+            "sneakers": "scarpe",
+            "sneaker": "scarpe",
+            "telera": "tela"
         }
 
         cleaned = []
+        seen = set()
         for tag in tags_list:
-            # Rimuove virgolette residue e pulisce
-            t = tag.lower().strip().replace("'", "").replace('"', '')
-            # Traduzione forzata
-            t = translation_map.get(t, t)
+            # Pulisce la stringa base (senza forzare lowercase qui)
+            t = tag.strip().replace("'", "").replace('"', '')
             
-            # Rimuove punteggiatura e termini blacklist
-            if t not in blacklist and len(t) > 2:
+            # RIMOZIONE PREFISSI (es: "brand:VALENTINO" -> "VALENTINO")
+            if ":" in t:
+                t = t.split(":", 1)[1].strip()
+            
+            # Normalizzazione per controlli
+            t_low = t.lower()
+            
+            # Traduzione e normalizzazione genere
+            if t_low in translation_map:
+                t = translation_map[t_low].title()
+                t_low = t.lower()
+            
+            # Controllo se il tag contiene parole bannate o è bannato
+            is_banned = False
+            for b in blacklist:
+                if b == t_low or (len(t_low) > 4 and b in t_low):
+                    is_banned = True
+                    break
+            
+            if not is_banned and len(t) > 2 and t_low not in seen:
+                # Forza RIGOROSAMENTE il minuscolo per tutti i tag come richiesto
+                t = t_low
+                
                 cleaned.append(t)
-        return list(set(cleaned))
+                seen.add(t_low)
+        return cleaned
 
     def _sanitize(self, v):
         if v is None: return ""
@@ -298,11 +367,14 @@ class HarvesterEngine:
         finally:
             db.close()
 
-    async def _enrich_single_product(self, product_id: int):
-        db = SessionLocal()
+    async def _enrich_single_product(self, product_id: int, model_choice: str = "llama3", db_session=None):
+        # Usiamo la sessione passata o ne creiamo una nuova se siamo in standalone
+        db = db_session if db_session else SessionLocal()
+        should_close = db_session is None
+        
         item = db.query(Product).filter(Product.id == product_id).first()
         if not item:
-            db.close()
+            if should_close: db.close()
             return
 
         try:
@@ -327,106 +399,80 @@ class HarvesterEngine:
             item.raw_harvested_data = combined_text
             
             # 2. AI (Priorità Locale via Ollama, Fallback OpenAI)
-            resolved_data = {}
-            used_local = False
+            # 2. AI (Multi-Model Routing)
+            prompt = (
+                f"Analizza questi dati per un prodotto di lusso.\n"
+                f"DATI CERTI (MASTER TRUTH): Brand: {item.brand}, Modello: {item.model}, Materiale: {item.material}\n"
+                f"DATI WEB (SOLO PER NARRATIVA): {combined_text}\n\n"
+                "TASK: Genera un JSON con i campi richiesti.\n"
+                "REGOLE FERREE PER IL TITOLO (seo_title):\n"
+                "1. Usa SOLO Brand + Modello + Materiale.\n"
+                "2. NON aggiungere mai nomi di modelli famosi (es. No 'Rockstud', No 'Birkin') se non sono presenti nella MASTER TRUTH.\n"
+                "3. Ignora i nomi di modelli diversi trovati nei DATI WEB se contraddicono il Modello della MASTER TRUTH.\n"
+                "REGOLE TAG: Genera tag per FILTRI Shopify. Includi SEMPRE: Brand, Materiale, Categoria specifica, Genere.\n"
+                "IMPORTANTE TAG:\n"
+                "1. SCRIVI RIGOROSAMENTE IN MINUSCOLO.\n"
+                "2. NON USARE PREFISSI (no 'brand:', no 'categoria:').\n"
+                "3. Usa 'scarpe' al posto di 'sneakers'.\n"
+                "4. Usa 'tela' al posto di 'telera'.\n"
+                "5. Genere: usa 'uomo' o 'donna'.\n"
+                "ESEMPIO DI TAG BUONI: 'valentino', 'scarpe', 'pelle', 'uomo', 'nero'.\n"
+            )
             
-            # Source Truth Extraction
-            source_cat = ""
-            source_tags = []
-            if item.source_sheet:
-                parts = [p.strip().capitalize() for p in item.source_sheet.split() if p.strip()]
-                if parts:
-                    source_cat = parts[0] # Scarpe
-                    source_tags = parts # [Scarpe, Uomo]
-            
-            import ollama_bridge
-            is_ollama_up = await ollama_bridge.check_ollama_status()
-            
-            if is_ollama_up:
-                add_log(f"🤖 [AI-Agent] Analisi identità lusso per ID {item.id}...")
-                local_prompt = (
-                    "Analizza i dati del prodotto e restituisci SOLO un oggetto JSON valido.\n"
-                    "FORMATO JSON RICHIESTO:\n"
-                    "{\n"
-                    "  \"seo_title\": \"Titolo SEO (es. 'Gucci Mini Ophidia'). Mantieni sempre parole come Mini, Nano, Micro, Medium, Large. NO categoria (NO 'Borsa').\",\n"
-                    "  \"material\": \"SOLO il nome del materiale primario in 1-2 parole (es. 'Pelle', 'Tela', 'Oro'). Sposta tutti i dettagli aggiuntivi nella 'ai_description_it'.\",\n"
-                    "  \"dimensions\": \"Misure\",\n"
-                    "  \"product_type\": \"Categoria specifica\",\n"
-                    "  \"tags\": \"Tag minuscoli, RIGOROSAMENTE IN ITALIANO (es. 'pelle', 'tracolla', 'catena'). NO parole fashion/vintage.\",\n"
-                    "  \"ai_description_it\": \"Descrizione lusso ed emozionale in italiano. Usa un vocabolario moderno dell'alta moda. NON inventare pattern o fantasie inesistenti. Concentrati sui dettagli forniti. ATTENZIONE: Usa un italiano perfetto e professionale.\"\n"
-                    "}\n"
-                    "RULES:\n"
-                    "1. 'seo_title' MUST be ONLY Brand + Model in Title Case (Capitalize each word).\n"
-                    "2. 'tags' must be short, lowercase, keywords for Shopify. TRADUCI TUTTO IN ITALIANO.\n"
-                    "3. 'ai_description_it' must use STRICT Italian gender agreement (singular). "
-                    f"If the product is a '{item.category}', use the correct Italian gender (e.g. 'la borsa' if feminine, 'lo zaino' if masculine). "
-                    "NEVER use plural like 'Le Borse' unless it's a set of items.\n"
-                    "4. RESPECT EXISTING DATA (SOURCE TRUTH): Se i 'Dati Catalogo' contengono già una Taglia, un Materiale o un Colore, NON DEVI CAMBIARLI. "
-                    "Non inventare conversioni se hai già un numero EU. Mantieni il dato originale del catalogo come priorità assoluta.\n"
-                    "5. MANDATORY TAGS: Includi SEMPRE il Brand, il Genere (scegli RIGOROSAMENTE tra 'uomo' o 'donna', mai entrambi nello stesso tag) e il tipo di prodotto.\n"
-                    f"Dati Catalogo: Brand: '{item.brand}', Modello: '{item.model}', Taglia Originale: '{item.size or item.dimensions}', Categoria: '{item.category}'.\n"
-                    f"Dati Web (da usare solo per arricchire la descrizione): {combined_text}"
-                )
-                add_log(f"🧠 [AI-Agent] Generazione mapping selettivo (Ollama)...")
-                local_resp = await ollama_bridge.generate_narrative("llama3", local_prompt)
-                try:
-                    # Estrazione JSON robusta
-                    clean_json = local_resp.strip()
-                    try:
-                        start_idx = clean_json.find('{')
-                        end_idx = clean_json.rfind('}') + 1
-                        if start_idx >= 0 and end_idx > start_idx:
-                            clean_json = clean_json[start_idx:end_idx]
-                        
-                        resolved_data = json.loads(clean_json)
-                        used_local = True
-                        add_log(f"✨ [AI-Agent] Estrazione parametri tecnici completata (Ollama).")
-                    except Exception as e:
-                        add_log(f"⚠ Errore parsing AI Locale per ID {item.id}: {str(e)}")
-                        add_log(f"Contenuto grezzo: {clean_json[:100]}...")
-                except Exception as e:
-                    add_log(f"⚠ Errore critico AI Locale: {str(e)}")
+            add_log(f"🤖 [AI-Agent] Richiesta a {model_choice} (Master-Priority) per ID {item.id}...")
+            resolved_data = await self.get_ai_json(prompt, model_choice)
 
-            if not used_local and self.openai_key and not self.openai_key.startswith("***"):
-                add_log(f"☁ [AI-Agent] Fallback su OpenAI Cloud per ID {item.id}...")
-                from openai import AsyncOpenAI
-                client = AsyncOpenAI(api_key=self.openai_key)
-                prompt = (
-                    "Analyze snippets and provide a JSON with: 'seo_title', 'material', 'dimensions', 'product_type', 'tags', 'ai_description_it'.\n"
-                    "RULES:\n"
-                    "1. 'seo_title' MUST be in Title Case (NOT ALL CAPS).\n"
-                    "2. 'material' MUST be physical material only, translated to ITALIAN (NO 'Cuir', use 'Pelle').\n"
-                    "3. 'tags' must be short, lowercase, STRICTLY ITALIAN keywords (NO 'fashion', 'vintage', 'luxury', 'glamour'). TRADUCI 'chain' -> 'catena', 'bag' -> 'borsa'.\n"
-                    "4. 'ai_description_it' MUST use correct Italian gender agreement (singular) and a highly professional, luxury tone. NO plural like 'Le Borse'.\n"
-                    "5. SOURCE TRUTH: If the input data has specific dimensions or material, do not overwrite them with general info from your knowledge base unless requested.\n"
-                    f"HINT: Original Source: '{item.source_sheet}'. Mandatory Category: {source_cat}.\n"
-                    "Data:\n" + combined_text
-                )
-                resp = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"}
-                )
-                resolved_data = json.loads(resp.choices[0].message.content)
-                add_log(f"✨ [AI-Agent] Parametri tecnici validati via Cloud.")
+            pass
 
             if resolved_data:
                 # ISOLAMENTO SANDBOX: Salviamo in raw_harvested_data come JSON preliminare
                 preliminary_results = {
-                    "seo_title": self._clean_seo_title(resolved_data.get("seo_title")),
-                    "material": self._sanitize_material(resolved_data.get("material")),
-                    "dimensions": self._sanitize(resolved_data.get("dimensions")),
-                    "product_type": item.category if item.category else self._sanitize(resolved_data.get("product_type")),
-                    "ai_description_it": self._sanitize(resolved_data.get("ai_description_it")),
+                    "seo_title": self._clean_seo_title(resolved_data.get("seo_title", "")),
+                    "material": self._sanitize_material(resolved_data.get("material", "")),
+                    "dimensions": self._sanitize(resolved_data.get("dimensions", "")),
+                    "product_type": item.category if item.category else self._sanitize(resolved_data.get("product_type", "")),
+                    "ai_description_it": self._sanitize(resolved_data.get("ai_description_it", "")),
                     "status": "PRELIMINARY"
                 }
                 
-                # Tag Management - Shopify Smart Rules
+                # Tag Management
                 raw_tags = resolved_data.get("tags", [])
-                preliminary_results["tags"] = self._clean_tags(raw_tags)
+                cleaned_tags = self._clean_tags(raw_tags)
                 
-                item.raw_harvested_data = json.dumps(preliminary_results)
-                add_log(f"🧪 [Harvester] Risultati isolati in Sandbox per ID {item.id} (Shopify-Ready).")
+                # Salviamo solo se abbiamo ottenuto qualcosa di sensato
+                if cleaned_tags:
+                    item.tags = ", ".join(cleaned_tags)
+                else:
+                    add_log(f"⚠️ [Harvester] L'AI non ha restituito tag validi per ID {item.id}. Mantengo quelli attuali.")
+                
+                # Update SEO Title e Desc solo se non vuoti
+                new_title = resolved_data.get("seo_title")
+                if new_title and len(new_title) > 5:
+                    item.seo_title = new_title
+                    
+                new_desc = resolved_data.get("ai_description_it")
+                if new_desc and len(new_desc) > 20:
+                    item.ai_description_it = new_desc
+
+                # Sincronizziamo anche la Sandbox per coerenza nell'Harvester
+                sandbox_data = json.loads(item.raw_harvested_data) if item.raw_harvested_data else {}
+                sandbox_data["seo_title"] = item.seo_title
+                sandbox_data["tags"] = cleaned_tags
+                sandbox_data["ai_description_it"] = item.ai_description_it
+                item.raw_harvested_data = json.dumps(sandbox_data)
+
+                db.commit()
+                add_log(f"🧪 [Harvester] Risultati salvati e sincronizzati per ID {item.id} (Via {model_choice}).")
+                
+                # Assicuriamoci che i tag siano nel risultato ritornato alla UI
+                return {
+                    "status": "ok",
+                    "seo_title": item.seo_title,
+                    "ai_description_it": item.ai_description_it,
+                    "tags": item.tags,
+                    "material": item.material,
+                    "dimensions": item.dimensions
+                }
             
             # --- PHASE 2.5: THE DEEP MAPPER (Drive Folder Matching) ---
             # STANDBY - Disabilitato temporaneamente su richiesta utente
@@ -439,7 +485,7 @@ class HarvesterEngine:
             else:
                 item.status = ProductStatus.Ready
                 
-            add_log(f"✅ [Harvester] Successo per ID {item.id} ({'Locale' if used_local else 'Cloud'})")
+            add_log(f"✅ [Harvester] Successo per ID {item.id}")
 
         except Exception as e:
             err_msg = str(e)
@@ -454,7 +500,8 @@ class HarvesterEngine:
             PROCESS_PROGRESS["completed"] += 1
             item.is_ai_processing = 0
             db.commit()
-            db.close()
+            if should_close:
+                db.close()
 
     async def deep_research(self, product_id: int):
         """Esegue una ricerca web approfondita per estrarre fatti tecnici e migliorare la narrazione."""

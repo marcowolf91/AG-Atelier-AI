@@ -720,16 +720,15 @@ def darkroom_search_products(q: str = "", only_pending: str = "false", db: Sessi
     try:
         query = db.query(Product)
         
-        # Rendiamo il filtro opzionale e più flessibile
-        if only_pending.lower() == "true":
-            query = query.filter(or_(Product.matched_images_json == None, Product.matched_images_json == '[]', Product.matched_images_json == ''))
-
+        # Ricerca per parole chiave (AND tra le parole)
         keywords = q.strip().split()
+        
         if not keywords: 
-            # Se non ci sono keyword ma vogliamo i pending, restituiamo i primi 20
+            # Se non ci sono keyword, mostriamo i primi 20 (priorità a quelli senza immagini se only_pending è true)
+            if only_pending.lower() == "true":
+                query = query.filter(or_(Product.matched_images_json == None, Product.matched_images_json == '[]', Product.matched_images_json == ''))
             return query.limit(20).all()
         
-        # Creiamo una lista di condizioni: OGNI parola deve essere presente in ALMENO UN campo
         conditions = []
         for word in keywords:
             word_query = f"%{word}%"
@@ -739,84 +738,88 @@ def darkroom_search_products(q: str = "", only_pending: str = "false", db: Sessi
                     Product.model.ilike(word_query),
                     Product.sku.ilike(word_query),
                     Product.id.cast(String).ilike(word_query),
-                    Product.category.ilike(word_query)
+                    Product.category.ilike(word_query),
+                    Product.description.ilike(word_query)
                 )
             )
         
         if conditions:
             query = query.filter(and_(*conditions))
             
+        # Nota: non filtriamo più forzatamente per matched_images_json se l'utente sta cercando attivamente
+        # Questo permette di trovare prodotti già associati per aggiungere nuove foto.
         return query.limit(50).all()
     except Exception as e:
         print(f"Search Error: {e}")
         return []
 
 @app.get("/api/darkroom/analyze-vision")
-async def darkroom_analyze_vision(file_id: str):
+async def darkroom_analyze_vision(file_id: str, product_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Analizza un'immagine con Gemini Vision usando i dati del Master come vincoli."""
     import google_auth
     from googleapiclient.discovery import build
-    import ollama_bridge
     import base64
     import io
     
+    api_key = auth_manager.get_raw_api_key("gemini")
+    if not api_key: return {"error": "no_api_key"}
+
     creds = google_auth.get_credentials()
     if not creds: return {"error": "non_auth"}
     
     drive_service = build('drive', 'v3', credentials=creds)
     try:
-        # 1. Scarichiamo l'immagine (o la thumbnail grande se possibile per velocità)
+        # 1. Recuperiamo i dati del prodotto se forniti
+        product_context = "Unknown Product"
+        if product_id:
+            p = db.query(Product).filter(Product.id == product_id).first()
+            if p:
+                product_context = f"Brand: {p.brand}, Model: {p.model}, Material: {p.material}, Color: {p.color}, Category: {p.category}"
+
+        # 2. Scarichiamo e ottimizziamo l'immagine
         raw_data = drive_service.files().get_media(fileId=file_id).execute()
-        
-        # 2. Ottimizziamo per l'AI (non serve mandare 10MB)
         from PIL import Image
         img = Image.open(io.BytesIO(raw_data))
-        img.thumbnail((512, 512)) # Dimensioni ottimali per moondream
+        img.thumbnail((1024, 1024)) 
         
         buffered = io.BytesIO()
-        img.save(buffered, format="JPEG")
+        img.save(buffered, format="JPEG", quality=85)
         b64_img = base64.b64encode(buffered.getvalue()).decode('utf-8')
         
-        # 3. Recuperiamo una lista di candidati reali per dare contesto all'AI (Lista a esaurimento)
-        db = next(get_db())
-        from sqlalchemy import or_
-        pending_products = db.query(Product).filter(
-            or_(Product.matched_images_json == None, Product.matched_images_json == '[]', Product.matched_images_json == '')
-        ).limit(40).all()
+        # 3. Chiamata a Gemini con il contesto del Master
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
         
-        catalog_context = "\n".join([f"- {p.brand} {p.model} (ID: {p.id})" for p in pending_products])
-
-        # 4. Chiediamo a Moondream con contesto reale e richiesta di attributi tecnici
-        prompt = f"""
-        Analyze this luxury fashion item with high precision. 
-        I need to match it against my catalog.
-        
-        AVAILABLE CATALOG:
-        {catalog_context}
+        prompt = f"""You are an expert luxury authenticator. 
+        GROUND TRUTH DATA FROM MASTER: {product_context}
         
         TASK:
-        1. Identify the BRAND.
-        2. Identify the COLOR and MATERIAL.
-        3. Identify any DISTINCTIVE DETAILS (e.g. "bow", "perforated monogram", "gold chain").
-        4. Match it to an ID from the AVAILABLE CATALOG if possible.
-        
-        RESPONSE FORMAT:
-        Reply ONLY with a string in this format:
-        BRAND | COLOR | DETAILS | SUGGESTED_ID
-        
-        Example: "Louis Vuitton | Beige | Perforated Monogram with Bow | 123"
+        1. Look at the photo and verify it matches the GROUND TRUTH.
+        2. Create a professional SEO Title. 
+        3. CRITICAL RULE: Use the 'Model' from GROUND TRUTH as the base. DO NOT invent or guess sub-models (like 'Rockstud', 'City', 'Speed') if you don't see them clearly in the photo.
+        4. If the master says 'Sneakers' and the photo shows a specific line name like 'VLTN' or 'Open', you can use it. But if you are unsure, stick to the Master Model.
+        5. Return ONLY the new SEO Title in Italian.
         """
         
-        result = await ollama_bridge.analyze_image_vision("moondream", prompt, b64_img)
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}}
+                ]
+            }]
+        }
         
-        # Pulizia e Parsing per Ricerca per Esclusione
-        parts = result.strip().split('|')
-        if len(parts) >= 3:
-            brand = parts[0].strip().replace('"', '')
-            color = parts[1].strip().replace('"', '')
-            details = parts[2].strip().replace('"', '')
-            suggestion = f"{brand} {color} {details}"
-        else:
-            suggestion = result.strip().replace('"', '').replace("'", "")
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=30.0)
+            res_data = resp.json()
+            try:
+                suggestion = res_data['candidates'][0]['content']['parts'][0]['text'].strip()
+                return {"status": "ok", "suggestion": suggestion}
+            except:
+                return {"status": "error", "message": "Analisi fallita."}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
         # Suggeriamo un nome SEO pulito (slugify)
         import re
@@ -2134,10 +2137,14 @@ class ValidationAction(BaseModel):
 @app.get("/atelier-lab")
 def atelier_lab(request: Request, category: str = None, brand: str = None, db: Session = Depends(get_db)):
     status, all_go = get_system_status()
-    # Un prodotto nel Lab deve avere immagini associate e stato Ready o Validating
+    # Query più inclusiva per debug e per Postgres
+    # Query ultra-permissiva con stringhe dirette per Postgres
     query = db.query(Product).filter(
-        (Product.status.in_([ProductStatus.Ready, ProductStatus.Validating])) &
-        (Product.matched_images_json != None) & (Product.matched_images_json != "[]")
+        (Product.status.in_(["Draft", "Ready", "Validating", "Error"])) &
+        (
+            (Product.matched_images_json.isnot(None)) & (Product.matched_images_json != "[]") & (Product.matched_images_json != "") |
+            (Product.drive_folder_id.isnot(None)) & (Product.drive_folder_id != "")
+        )
     )
     
     if category:
@@ -2277,32 +2284,45 @@ async def lab_regenerate(product_id: int, request: Request, db: Session = Depend
     model_choice = data.get("model", "llama3")
     target = data.get("target", "all")
     
-    from harvester import HarvesterEngine
-    engine = HarvesterEngine()
-    
-    if target == "title":
-        # Logica specifica per il Titolo SEO
-        item = db.query(Product).filter(Product.id == product_id).first()
-        prompt = f"Genera un titolo SEO pulito per il prodotto {item.brand} {item.model}. Usa SOLO Brand + Modello + materiale (opzionale) in Title Case. NON inserire MAI la categoria (divieto di usare parole come 'Borsa Donna', 'Scarpe', ecc.). Rispondi SOLO con il titolo."
-        import ollama_bridge
-        title = await ollama_bridge.generate_narrative(model_choice, prompt)
-        item.seo_title = title.strip().replace('"', '')
-        db.commit()
-        return {"status": "ok", "seo_title": item.seo_title}
-    
-    elif target == "desc":
-        # Logica specifica per la Descrizione
-        item = db.query(Product).filter(Product.id == product_id).first()
-        prompt = f"Scrivi una descrizione lussuosa, emozionale e corposa (almeno 5-6 frasi) per un prodotto di alta moda: {item.brand} {item.model}. Esalta la qualità, l'artigianalità e il design. Usa un italiano perfetto e altamente professionale. Rispondi SOLO con il testo della descrizione, senza formattazioni o introduzioni."
-        import ollama_bridge
-        desc = await ollama_bridge.generate_narrative(model_choice, prompt)
-        item.ai_description_it = desc.strip()
-        db.commit()
-        return {"status": "ok", "ai_description_it": item.ai_description_it}
-    
-    else:
+    item = db.query(Product).filter(Product.id == product_id).first()
+    if not item: return {"status": "error", "message": "Prodotto non trovato"}
+
+    async def get_ai_response(prompt, model_name):
+        if model_name == "gemini":
+            api_key = auth_manager.get_raw_api_key("gemini")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(url, json=payload, timeout=30.0)
+                res_data = resp.json()
+                return res_data['candidates'][0]['content']['parts'][0]['text']
+        
+        elif model_name == "openai":
+            api_key = auth_manager.get_raw_api_key("openai")
+            from openai import AsyncOpenAI
+            ai_client = AsyncOpenAI(api_key=api_key)
+            resp = await ai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return resp.choices[0].message.content
+        
+        else: # Llama o locale
+            import ollama_bridge
+            return await ollama_bridge.generate_narrative(model_name, prompt)
+
+    try:
+        # Per massime prestazioni e coerenza, usiamo il motore del Harvester per tutto
+        from harvester import HarvesterEngine
+        engine = HarvesterEngine()
+        
+        # Eseguiamo il processo completo (Title, Desc, Tags) usando le regole centralizzate
         result = await engine.process_single_product(product_id, db, model_choice)
         return result
+    except Exception as e:
+        import traceback
+        print(f"❌ Errore Lab Regenerate: {traceback.format_exc()}")
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/lab/generate-seo/{product_id}")
 async def lab_generate_seo(product_id: int, db: Session = Depends(get_db)):
@@ -2318,12 +2338,49 @@ async def system_usage(db: Session = Depends(get_db)):
     return {"serper": usage.total_hits if usage else 0}
 
 @app.post("/api/lab/generate-tags/{product_id}")
-async def lab_generate_tags(product_id: int, db: Session = Depends(get_db)):
-    from harvester import HarvesterEngine
-    engine = HarvesterEngine()
-    res = await engine.process_single_product(product_id, db)
-    tags = res.get("tags", [])
-    return {"status": "ok", "tags": tags}
+async def lab_generate_tags(product_id: int, request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    model_choice = data.get("model", "llama3")
+    from ai_agent import AIAgent
+    agent = AIAgent()
+    
+    item = db.query(Product).filter(Product.id == product_id).first()
+    if not item: return {"status": "error", "message": "Prodotto non trovato"}
+    
+    prompt = agent.build_fashion_prompt(item)
+    res = await agent.get_clean_json(prompt, model_choice)
+    
+    raw_tags = res.get("tags", [])
+    if raw_tags:
+        from harvester import HarvesterEngine
+        engine = HarvesterEngine()
+        cleaned_tags = engine._clean_tags(raw_tags)
+        item.tags = ", ".join(cleaned_tags)
+        db.commit()
+        db.refresh(item)
+    
+    return {"status": "ok", "tags": item.tags}
+
+@app.post("/api/lab/generate-seo/{product_id}")
+async def lab_generate_seo(product_id: int, request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    model_choice = data.get("model", "llama3")
+    from ai_agent import AIAgent
+    agent = AIAgent()
+    
+    item = db.query(Product).filter(Product.id == product_id).first()
+    if not item: return {"status": "error", "message": "Prodotto non trovato"}
+    
+    prompt = agent.build_fashion_prompt(item)
+    res = await agent.get_clean_json(prompt, model_choice)
+    
+    seo_title = res.get("seo_title")
+    if seo_title:
+        item.seo_title = seo_title
+        db.commit()
+        db.refresh(item)
+    
+    return {"status": "ok", "seo_title": item.seo_title}
 
 @app.get("/api/shopify/status")
 async def shopify_status():
@@ -2479,6 +2536,38 @@ def save_keys(
     
     db.commit()
     return RedirectResponse(url="/engine-room", status_code=303)
+
+
+@app.get("/api/settings/test-key")
+async def test_api_key(service: str):
+    """Verifica se una chiave API è valida facendo una piccola richiesta di test."""
+    key = auth_manager.get_raw_api_key(service)
+    if not key:
+        return {"status": "error", "message": "Chiave non trovata."}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            if service == "openai":
+                resp = await client.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {key}"})
+                if resp.status_code == 200: return {"status": "ok"}
+                return {"status": "error", "message": "Chiave OpenAI non valida o scaduta."}
+            
+            elif service == "gemini":
+                # Usiamo la lista modelli come ping veloce
+                resp = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}")
+                if resp.status_code == 200: return {"status": "ok"}
+                return {"status": "error", "message": "Chiave Gemini non valida."}
+                
+            elif service == "serper":
+                resp = await client.post("https://google.serper.dev/search", 
+                                        headers={"X-API-KEY": key, "Content-Type": "application/json"},
+                                        json={"q": "apple"})
+                if resp.status_code == 200: return {"status": "ok"}
+                return {"status": "error", "message": "Chiave Serper non valida."}
+            
+            return {"status": "error", "message": "Servizio non supportato per il test."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # --- SHOPIFY BRIDGE ---

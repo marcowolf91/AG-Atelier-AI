@@ -39,16 +39,23 @@
 </div>
 
 <!-- FLOATING ACTIONS BAR -->
-<div id="floating-actions" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #ef4444; color: #fff; padding: 12px 24px; border-radius: 40px; display: none; align-items: center; gap: 20px; z-index: 1000; box-shadow: 0 10px 30px rgba(239,68,68,0.4); border: 2px solid rgba(255,255,255,0.2);">
+<div id="floating-actions" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 12px 24px; border-radius: 40px; display: none; align-items: center; gap: 20px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid rgba(212,175,55,0.3); backdrop-filter: blur(10px);">
     <div style="font-weight: 900; font-size: 0.75rem; letter-spacing: 1px; display: flex; align-items: center; gap: 10px;">
-        <span id="selected-count-badge" style="background: #fff; color: #ef4444; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 0.7rem;">0</span>
+        <span id="selected-count-badge" style="background: var(--accent-gold); color: #000; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 0.7rem; font-weight: 900;">0</span>
         ASSET SELEZIONATI
     </div>
-    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.3);"></div>
-    <button id="floating-action-btn" class="btn" style="background: #fff; color: #ef4444; font-size: 0.7rem; font-weight: 800; padding: 6px 16px; border-radius: 20px; border: none; cursor: pointer;">
-        VAI AL MATCHING <i class="ph ph-arrow-right"></i>
-    </button>
-    <button onclick="clearSelection()" style="background: none; border: none; color: #fff; opacity: 0.7; font-size: 0.6rem; cursor: pointer; text-decoration: underline;">Annulla</button>
+    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1);"></div>
+    
+    <div id="floating-buttons-container" style="display: flex; gap: 10px;">
+        <button id="floating-action-btn" class="btn" style="background: #fff; color: #000; font-size: 0.7rem; font-weight: 800; padding: 8px 20px; border-radius: 20px; border: none; cursor: pointer;">
+            VAI AL MATCHING <i class="ph ph-arrow-right"></i>
+        </button>
+        <button id="ai-match-btn" class="btn" style="background: var(--accent-gold); color: #000; font-size: 0.7rem; font-weight: 900; padding: 8px 20px; border-radius: 20px; border: none; cursor: pointer; display: none;" onclick="startAiMatching()">
+            DEEP MATCH AI <i class="ph ph-sparkle"></i>
+        </button>
+    </div>
+
+    <button onclick="clearSelection()" style="background: none; border: none; color: #fff; opacity: 0.5; font-size: 0.6rem; cursor: pointer; text-decoration: underline;">Annulla</button>
 </div>
 
 <script src="/static/js/darkroom_core.js?v=1.0.2"></script>
@@ -112,13 +119,13 @@
         const bar = document.getElementById('floating-actions');
         const badge = document.getElementById('selected-count-badge');
         const actionBtn = document.getElementById('floating-action-btn');
+        const aiBtn = document.getElementById('ai-match-btn');
         const count = selectedImageIds.length;
         
         if (count > 0) {
             bar.style.display = 'flex';
             badge.innerText = count;
             
-            // Logica intelligente: controlliamo se ci sono RAW selezionati
             const selectedImages = DarkroomCore.allImages.filter(img => selectedImageIds.includes(img.id));
             const hasRaw = selectedImages.some(img => {
                 const name = (img.name || "").toLowerCase();
@@ -127,20 +134,65 @@
             });
             
             if (hasRaw) {
+                bar.style.background = '#ef4444';
+                bar.style.boxShadow = '0 10px 30px rgba(239,68,68,0.4)';
+                badge.style.color = '#ef4444';
+                badge.style.background = '#fff';
+                actionBtn.style.color = '#ef4444';
                 actionBtn.innerHTML = 'SVILUPPA ASSET <i class="ph ph-magic-wand"></i>';
                 actionBtn.onclick = () => {
                     const ids = selectedImageIds.join(',');
                     window.location.href = `/the-darkroom/convert?ids=${ids}`;
                 };
+                aiBtn.style.display = 'none';
             } else {
-                actionBtn.innerHTML = 'VAI AL MATCHING <i class="ph ph-arrow-right"></i>';
+                bar.style.background = '#1a1a1a';
+                bar.style.boxShadow = '0 10px 40px rgba(0,0,0,0.5)';
+                badge.style.color = '#000';
+                badge.style.background = 'var(--accent-gold)';
+                actionBtn.style.color = '#000';
+                actionBtn.innerHTML = 'MATCHING MANUALE <i class="ph ph-hand-pointing"></i>';
                 actionBtn.onclick = () => {
                     const ids = selectedImageIds.join(',');
                     window.location.href = `/the-darkroom/matching?ids=${ids}`;
                 };
+                aiBtn.style.display = 'flex';
             }
         } else {
             bar.style.display = 'none';
+        }
+    }
+
+    let aiSuggestions = {};
+
+    async function startAiMatching() {
+        if (selectedImageIds.length === 0) return;
+        
+        const aiBtn = document.getElementById('ai-match-btn');
+        const originalHtml = aiBtn.innerHTML;
+        aiBtn.innerHTML = 'ELABORAZIONE... <i class="ph ph-circle-notch animate-spin"></i>';
+        aiBtn.disabled = true;
+
+        try {
+            const response = await fetch('/api/darkroom/ai-match', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: json.stringify({ image_ids: selectedImageIds })
+            });
+            const data = await response.json();
+            
+            if (data.status === 'ok') {
+                aiSuggestions = { ...aiSuggestions, ...data.matches };
+                showToast("Analisi AI completata con successo!", "success");
+                renderGrid();
+            } else {
+                showToast("Errore AI: " + data.message, "error");
+            }
+        } catch (e) {
+            showToast("Errore di connessione AI", "error");
+        } finally {
+            aiBtn.innerHTML = originalHtml;
+            aiBtn.disabled = false;
         }
     }
 
@@ -248,15 +300,24 @@
                 `;
             }
 
+            // Badge AI Suggestion
+            let aiHtml = '';
+            if (aiSuggestions[img.id]) {
+                const match = aiSuggestions[img.id];
+                aiHtml = `
+                    <div style="position:absolute; top:40px; left:12px; background:var(--accent-gold); color:#000; font-size:0.55rem; font-weight:900; padding:4px 8px; border-radius:4px; z-index:11; box-shadow:0 4px 10px rgba(212,175,55,0.4); border:1px solid #fff;">
+                        <i class="ph ph-sparkle"></i> AI SUGGEST: ${match.detected} (${match.confidence}%)
+                    </div>
+                `;
+            }
+
             card.innerHTML = `
                 ${badgeHtml}
                 ${originHtml}
-                <div style="width:100%; aspect-ratio:1; overflow:hidden; border-radius:8px; background:#000; margin-bottom:10px;">
-                    <img src="${imgSrc}" loading="lazy" style="width:100%; height:100%; object-fit:cover; opacity: ${isAssociated || alreadyDeveloped ? '0.5' : '1'}">
-                </div>
-                ${isSelected ? '<div style="position:absolute; top:15px; right:15px; background:var(--accent-gold); color:#000; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:900; z-index:10;"><i class="ph ph-check"></i></div>' : ''}
-                <div style="font-size: 0.65rem; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${img.name}</div>
-                <div style="font-size: 0.55rem; color: var(--text-secondary); margin-top: 4px;">${(img.size / 1024 / 1024).toFixed(2)} MB</div>
+                ${aiHtml}
+                <img src="${imgSrc}" style="width:100%; height:160px; object-fit:cover; border-radius:8px; margin-bottom:8px;">
+                <div style="font-size:0.65rem; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${img.name}</div>
+                <div style="font-size:0.55rem; color:var(--text-secondary); margin-top:2px;">${(img.size / 1024 / 1024).toFixed(2)} MB</div>
             `;
             
             grid.appendChild(card);

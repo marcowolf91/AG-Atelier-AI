@@ -65,36 +65,18 @@
                 <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 16px;">
                     <div style="font-size: 2rem; font-weight: 800; color: #fff;">€ {{ item.price or '0.00' }}</div>
                     
-                    <!-- NAVIGAZIONE POTENZIATA -->
                     <div style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
-                        {% set prev_idx = loop.index0 - 1 %}
-                        {% set next_idx = loop.index0 + 1 %}
-                        
-                        <button onclick="switchSpotlight({{ products[prev_idx].id if prev_idx >= 0 else 'null' }})" 
-                                class="btn glass-btn" 
-                                style="width: 50px; height: 50px; justify-content: center; padding: 0; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); {% if prev_idx < 0 %}opacity: 0.1; pointer-events: none;{% endif %}"
-                                title="Precedente">
-                            <i class="ph ph-arrow-left" style="font-size: 1.5rem; color: #fff;"></i>
-                        </button>
-                        
                         <div style="background: rgba(0,0,0,0.3); padding: 8px 16px; border-radius: 8px; text-align: center; min-width: 70px;">
                             <div style="font-size: 1rem; font-weight: 900; color: var(--accent-gold); line-height: 1;">{{ loop.index }}</div>
                             <div style="font-size: 0.55rem; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-top: 2px;">di {{ products|length }}</div>
                         </div>
-
-                        <button onclick="switchSpotlight({{ products[next_idx].id if next_idx < products|length else 'null' }})" 
-                                class="btn glass-btn" 
-                                style="width: 50px; height: 50px; justify-content: center; padding: 0; background: var(--accent-gold); border: none; {% if next_idx >= products|length %}opacity: 0.1; pointer-events: none;{% endif %}"
-                                title="Prossimo">
-                            <i class="ph ph-arrow-right" style="font-size: 1.5rem; color: #000;"></i>
-                        </button>
                     </div>
                 </div>
             </div>
 
             <!-- Visual & Description Split -->
             <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; height: 320px; margin-bottom: 24px;">
-                <div class="visual-pane glass-panel" style="padding:0; overflow:hidden; background: #000;">
+                <div class="visual-pane glass-panel" style="padding:0; overflow:hidden; background: #000; position:relative;">
                     {% if imgs and imgs|length > 0 %}
                         <img src="/api/drive/proxy/{{ imgs[0] }}" style="width: 100%; height: 100%; object-fit: contain; opacity: 0.9;">
                         <div style="position:absolute; top:10px; left:10px; background:var(--accent-gold); color:#000; padding:2px 8px; border-radius:4px; font-size:0.55rem; font-weight:800; letter-spacing:1px;">COVER (FOTO 1)</div>
@@ -150,9 +132,6 @@
                         {% if is_shoe %}Taglia (IT/EU){% else %}Dimensioni (cm){% endif %}
                     </label>
                     <input type="text" class="glass-input" id="dim-{{ item.id }}" value="{{ item.dimensions or (item.size if is_shoe else '') }}" placeholder="es. 42 o 30x20x10" style="width: 100%; font-size: 0.8rem;">
-                    {% if item.fit %}
-                    <div style="margin-top: 4px; font-size: 0.6rem; color: var(--accent-gold); font-weight: 600;">CALZATA: {{ item.fit }}</div>
-                    {% endif %}
                 </div>
             </div>
 
@@ -160,12 +139,23 @@
                 <div class="input-group">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <label style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase;">Titolo SEO Certificato</label>
-                        <button onclick="regenerateAI(event, {{ item.id }}, 'title')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA CON AI</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="regenerateAI(event, {{ item.id }}, 'title')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA CON AI</button>
+                            <button onclick="fixWithVision(event, {{ item.id }})" class="btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px; background: var(--accent-gold); color: #000; border: none; font-weight: 800;">
+                                <i class="ph ph-sparkle"></i> CORREGGI CON VISIONE AI
+                            </button>
+                        </div>
                     </div>
                     <input type="text" class="glass-input" id="seo-{{ item.id }}" value="{{ item.seo_title or '' }}" style="width: 100%; font-size: 1.1rem; font-weight: 700; color: #fff; background: rgba(255,255,255,0.03); border-left: 4px solid var(--accent-gold);">
+                    <div style="margin-top: 6px; font-size: 0.55rem; color: rgba(255,255,255,0.3); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px;">
+                        <i class="ph ph-cpu"></i> SOURCE ENGINE: <span style="color: var(--accent-gold);" id="engine-source-{{ item.id }}">AUTO-HARVESTED (SERPER + GPT)</span>
+                    </div>
                 </div>
                 <div class="input-group">
-                    <label style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; display: block;">Smart Tags</label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">Smart Tags</label>
+                        <button onclick="regenerateAI(event, {{ item.id }}, 'tags')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA TAG</button>
+                    </div>
                     <input type="text" class="glass-input" id="tags-{{ item.id }}" value="{{ item.tags or '' }}" placeholder="tag1, tag2..." style="width: 100%; background: rgba(255,255,255,0.03);">
                 </div>
             </div>
@@ -174,9 +164,10 @@
             <div class="glass-panel" style="padding: 12px; background: rgba(212,175,55,0.03); border: 1px dashed rgba(212,175,55,0.2); display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
                 <div style="flex: 1;">
                     <label style="font-size: 0.6rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">AI Engine Re-Boost</label>
-                    <select id="model-{{ item.id }}" class="glass-input" style="width: 100%; font-size: 0.75rem; background: rgba(0,0,0,0.2);">
-                        <option value="llama3">Llama 3 (Meta Local)</option>
-                        <option value="openai">GPT-4o (OpenAI Cloud)</option>
+                    <select id="model-{{ item.id }}" class="glass-input" style="width: 100%; font-size: 0.75rem; background: rgba(0,0,0,0.2); border-color: rgba(212,175,55,0.2);">
+                        <option value="gemini">Gemini 2.0 Flash (Consigliato per Visione/Precisione)</option>
+                        <option value="openai">GPT-4o (Ottimo per SEO & Narrativa)</option>
+                        <option value="llama3">Llama 3 (Meta Local - Privacy & Speed)</option>
                     </select>
                 </div>
                 <button onclick="regenerateAI(event, {{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
@@ -184,108 +175,138 @@
                 </button>
             </div>
 
-            </div>
         </div>
         {% endfor %}
     </div>
 
-    <!-- ACTION CONTROLS (FIXED AT BOTTOM) -->
+    <!-- ACTION CONTROLS -->
     <div style="position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 40px; z-index: 9999; width: 100%; pointer-events: none;">
-        
         <div style="text-align: center; pointer-events: auto;">
-            <button class="control-btn reject" onclick="const card = document.querySelector('.tinder-card.front'); handleSwipe('left', currentIndex, card.getAttribute('data-id'))" 
-                    style="width: 70px; height: 70px; background: #1a1a1a; border: 2px solid #ff4d4d; color: #ff4d4d; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);">
+            <button class="control-btn reject" onclick="handleSwipe('left')" 
+                    style="width: 70px; height: 70px; background: #1a1a1a; border: 2px solid #ff4d4d; color: #ff4d4d; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; cursor: pointer;">
                 <i class="ph-bold ph-x"></i>
             </button>
-            <div style="font-size: 0.6rem; font-weight: 800; color: #ff4d4d; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px;">Scarta</div>
+            <div style="font-size: 0.6rem; font-weight: 800; color: #ff4d4d; margin-top: 8px; text-transform: uppercase;">Scarta</div>
         </div>
 
         <div style="text-align: center; pointer-events: auto;">
-            <button class="control-btn skip" onclick="const card = document.querySelector('.tinder-card.front'); quickFix(card.getAttribute('data-id'))" 
-                    style="width: 60px; height: 60px; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);">
-                <i class="ph-duotone ph-pencil-line"></i>
-            </button>
-            <div style="font-size: 0.55rem; font-weight: 700; color: rgba(255,255,255,0.4); margin-top: 8px; text-transform: uppercase;">Edita</div>
-        </div>
-
-        <div style="text-align: center; pointer-events: auto;">
-            <button class="control-btn certify" onclick="const card = document.querySelector('.tinder-card.front'); handleSwipe('right', currentIndex, card.getAttribute('data-id'))" 
-                    style="width: 90px; height: 90px; background: #4CAF50; color: #fff; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; cursor: pointer; box-shadow: 0 15px 30px rgba(76, 175, 80, 0.4);">
+            <button class="control-btn certify" onclick="handleSwipe('right')" 
+                    style="width: 90px; height: 90px; background: #4CAF50; color: #fff; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; cursor: pointer;">
                 <i class="ph-fill ph-check-circle"></i>
             </button>
-            <div style="font-size: 0.7rem; font-weight: 900; color: #4CAF50; margin-top: 8px; text-transform: uppercase; letter-spacing: 1px;">Approva & Pubblica</div>
+            <div style="font-size: 0.7rem; font-weight: 900; color: #4CAF50; margin-top: 8px; text-transform: uppercase;">Approva & Pubblica</div>
         </div>
     </div>
+
+    <div id="toast-container" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
 </div>
 
+{% endif %}
+
 <style>
-.lab-container { position: relative; min-height: 1100px; display: flex; justify-content: center; padding-bottom: 100px; }
-.tinder-viewport { position: relative; width: 100%; max-width: 820px; height: 1000px; }
-
+.lab-container { position: relative; min-height: 1000px; display: flex; justify-content: center; }
+.tinder-viewport { position: relative; width: 100%; max-width: 820px; height: 900px; }
 .tinder-card {
-    position: absolute; width: 100%; height: 100%; padding: 32px; border-radius: 24px; 
-    background: #111; 
-    border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-    display: flex; flex-direction: column; overflow: hidden;
-    user-select: none;
-    padding-bottom: 40px;
+    position: absolute; width: 100%; padding: 32px; border-radius: 24px; 
+    background: #111; border: 1px solid rgba(255,255,255,0.1); 
+    display: none; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
 }
+.tinder-card.front { display: flex; z-index: 10; }
+.tinder-card.behind { display: flex; z-index: 5; transform: scale(0.96) translateY(30px); opacity: 0.6; }
 
-.tinder-card.front { z-index: 10; opacity: 1; transform: none; }
-.tinder-card.behind { z-index: 5; opacity: 0.8; transform: scale(0.96) translateY(30px); }
-.tinder-card.hidden { display: none; } /* Non carichiamo elementi invisibili nel rendering costoso */
+.card-out-right { transform: translateX(1000px) rotate(20deg) !important; opacity: 0 !important; transition: 0.5s; }
+.card-out-left { transform: translateX(-1000px) rotate(-20deg) !important; opacity: 0 !important; transition: 0.5s; }
 
-.card-out-right { transform: translateX(1200px) rotate(25deg) !important; opacity: 0 !important; }
-.card-out-left { transform: translateX(-1200px) rotate(-25deg) !important; opacity: 0 !important; }
-.card-out-bottom { transform: translateY(1200px) !important; opacity: 0 !important; }
-
-.control-btn { 
-    width: 72px; height: 72px; border-radius: 50%; border: none; font-size: 2rem; 
-    display: flex; align-items: center; justify-content: center; cursor: pointer; 
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.control-btn.certify { background: var(--accent-gold); color: #000; box-shadow: 0 0 20px rgba(212,175,55,0.4); }
-.control-btn.certify:hover { transform: scale(1.15) rotate(5deg); box-shadow: 0 0 30px rgba(212,175,55,0.6); }
-.control-btn.reject { background: #222; color: #fff; border: 1px solid #333; }
-.control-btn.reject:hover { transform: scale(1.1) rotate(-5deg); background: #333; }
-.control-btn.skip { background: rgba(255,255,255,0.05); color: #888; }
-.control-btn.skip:hover { background: rgba(255,255,255,0.1); color: #fff; }
-
-.audit-flag { font-size: 0.55rem; font-weight: 900; padding: 2px 8px; border-radius: 4px; letter-spacing: 1px; }
-.audit-flag.alert { background: #FFF7ED; color: #C2410C; }
-.audit-flag.critical { background: #FEF2F2; color: #B91C1C; }
-
-.pulse-dot { width: 8px; height: 8px; background: var(--accent-gold); border-radius: 50%; box-shadow: 0 0 10px var(--accent-gold); animation: pulse 2s infinite; }
-@keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+.control-btn { transition: all 0.2s; }
+.control-btn:hover { transform: scale(1.1); }
+.pulse-dot { width: 8px; height: 8px; background: var(--accent-gold); border-radius: 50%; animation: pulse 2s infinite; }
+@keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+@keyframes slideUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 </style>
 
 <script>
     let currentIndex = 0;
     const totalCards = {{ products|length }};
     
+    // Persistenza scelta modello
+    function getSelectedModel() {
+        return localStorage.getItem('atelier_ai_model') || 'gemini';
+    }
+    
+    function setSelectedModel(model) {
+        if (localStorage.getItem('atelier_ai_model') === model) return; // Evita loop se già impostato
+        
+        localStorage.setItem('atelier_ai_model', model);
+        
+        // Aggiorna silenziosamente tutti i select senza scatenare eventi
+        const selects = document.querySelectorAll('select[id^="model-"]');
+        selects.forEach(s => {
+            if (s.value !== model) s.value = model;
+        });
+        
+        showToast(`⚙️ Motore impostato su: ${model}`, "info");
+    }
+
+    // Inizializzazione modelli al caricamento
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedModel = getSelectedModel();
+        const selects = document.querySelectorAll('select[id^="model-"]');
+        
+        selects.forEach(select => {
+            select.value = savedModel;
+            // Usiamo addEventListener invece di onchange per maggiore controllo
+            select.addEventListener('change', (e) => {
+                setSelectedModel(e.target.value);
+            });
+        });
+    });
+    
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const color = type === 'success' ? '#4CAF50' : (type === 'info' ? 'var(--accent-gold)' : '#f44336');
+        toast.style.cssText = `background: rgba(0,0,0,0.9); color:#fff; padding:12px 24px; border-radius:50px; border:1px solid ${color}; font-size:0.8rem; font-weight:600; display:flex; align-items:center; gap:10px; pointer-events:auto; animation: slideUp 0.3s ease-out;`;
+        toast.innerHTML = `<i class="ph ph-sparkle" style="color:${color};"></i> ${message}`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
     function applyLabFilters() {
         const cat = document.getElementById('filter-cat').value;
         const brand = document.getElementById('filter-brand').value;
         window.location.href = `/atelier-lab?category=${cat}&brand=${brand}`;
     }
 
-    function handleSwipe(direction, index, productId) {
-        if(index !== currentIndex) return;
-        const card = document.getElementById(`card-${index}`);
+    async function fixWithVision(event, productId) {
+        if(event) event.preventDefault();
+        showToast("L'AI sta guardando la foto...", "info");
         
-        if(direction === 'right') {
-            card.style.transform = 'translateX(1000px)';
-            card.style.opacity = '0';
-        }
-        else if(direction === 'left') {
-            card.style.transform = 'translateX(-1000px)';
-            card.style.opacity = '0';
-        }
-        else if(direction === 'bottom') {
-            card.style.transform = 'translateY(1000px)';
-            card.style.opacity = '0';
-        }
+        const card = document.querySelector(`.tinder-card[data-id="${productId}"]`);
+        const img = card.querySelector('.visual-pane img');
+        if (!img) return showToast("Nessuna immagine.", "error");
+        
+        const fileId = img.src.split('/').pop();
+        try {
+            const res = await fetch(`/api/darkroom/analyze-vision?file_id=${fileId}&product_id=${productId}`);
+            const data = await res.json();
+            if (data.status === 'ok') {
+                document.getElementById(`seo-${productId}`).value = data.suggestion;
+                const badge = document.getElementById(`engine-source-${productId}`);
+                if (badge) badge.innerText = "VERIFIED BY GEMINI 2.0 VISION (MASTER-GUIDED)";
+                showToast("Visione AI: Titolo corretto!", "success");
+            } else {
+                showToast("Errore AI: " + data.message, "error");
+            }
+        } catch(e) { showToast("Errore AI", "error"); }
+    }
 
+    function handleSwipe(direction) {
+        const card = document.querySelector('.tinder-card.front');
+        if(!card) return;
+        const productId = card.getAttribute('data-id');
+        
+        card.classList.add(direction === 'right' ? 'card-out-right' : 'card-out-left');
+        
         if(direction === 'right') {
             const payload = {
                 seo_title: document.getElementById(`seo-${productId}`).value,
@@ -302,78 +323,50 @@
             }).then(() => showToast("✨ Prodotto Certificato!"));
         }
 
-        setTimeout(() => { card.style.display = 'none'; }, 500);
-        
-        currentIndex++;
-        updateQueueUI();
+        setTimeout(() => {
+            currentIndex++;
+            updateQueueUI();
+        }, 500);
     }
 
     function updateQueueUI() {
         const countEl = document.getElementById('queue-count');
         if(countEl) countEl.innerText = Math.max(0, totalCards - currentIndex);
 
-        if (currentIndex < totalCards) {
-            const nextCard = document.getElementById(`card-${currentIndex}`);
-            if(nextCard) {
-                nextCard.className = 'tinder-card front';
-                nextCard.style.display = 'flex';
+        document.querySelectorAll('.tinder-card').forEach((c, idx) => {
+            c.classList.remove('front', 'behind');
+            c.style.display = 'none';
+            if(idx === currentIndex) {
+                c.classList.add('front');
+                c.style.display = 'flex';
+            } else if(idx === currentIndex + 1) {
+                c.classList.add('behind');
+                c.style.display = 'flex';
             }
-            const afterNext = document.getElementById(`card-${currentIndex+1}`);
-            if(afterNext) {
-                afterNext.className = 'tinder-card behind';
-                afterNext.style.display = 'flex';
-            }
-            // Nascondiamo gli altri per sicurezza
-            document.querySelectorAll('.tinder-card').forEach((c, idx) => {
-                if(idx !== currentIndex && idx !== currentIndex + 1) {
-                    c.style.display = 'none';
-                }
-            });
-        } else {
-            showToast("✨ Ottimo lavoro! Hai completato tutti i prodotti in coda.");
+        });
+
+        if (currentIndex >= totalCards) {
+            showToast("✨ Coda completata!");
             setTimeout(() => { window.location.href = '/atelier-lab'; }, 2000);
         }
     }
 
-    async function deepResearch(pid) {
-        const btn = document.getElementById(`btn-res-${pid}`);
-        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
-        btn.disabled = true;
-        showToast("🔍 Ricerca web profonda in corso...");
-
-        try {
-            const res = await fetch(`/api/lab/research/${pid}`, { method: 'POST' });
-            const data = await res.json();
-            if(data.status === 'ok') {
-                document.getElementById(`mat-${pid}`).value = data.data.material || '';
-                document.getElementById(`dim-${pid}`).value = data.data.dimensions || '';
-                // Aggiorniamo anche la descrizione visivamente
-                const descBox = document.querySelector(`#card-${currentIndex} .glass-panel div[style*="rgba(255,255,255,0.8)"]`);
-                if(descBox) descBox.innerText = data.data.ai_description_it;
-                
-                showToast("✨ Intelligence Hub: Dati arricchiti con successo.");
-            } else {
-                showToast("⚠️ Ricerca non ha prodotto nuovi dati deterministici.");
-            }
-        } catch(e) { showToast("Errore di connessione Intelligence."); }
-        finally {
-            btn.innerHTML = '<i class="ph-bold ph-globe-hemisphere-west"></i>';
-            btn.disabled = false;
-        }
-    }
-
     async function regenerateAI(event, pid, target = 'all') {
-        const btn = event ? event.currentTarget : document.getElementById(`btn-reg-${pid}`);
-        const oldHtml = btn.innerHTML;
         const modelEl = document.getElementById(`model-${pid}`);
-        const model = modelEl ? modelEl.value : "llama3";
+        const model = modelEl ? modelEl.value : getSelectedModel();
         
-        if(btn) {
-            btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
-            btn.disabled = true;
+        // Effetto caricamento sul bottone se target è tags
+        let originalBtnHtml = "";
+        let targetBtn = null;
+        if(target === 'tags') {
+            targetBtn = event.target;
+            originalBtnHtml = targetBtn.innerHTML;
+            targetBtn.disabled = true;
+            targetBtn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i>';
         }
-        showToast(`🤖 AI in azione (${target})...`);
 
+        showToast(`🤖 Rigenerazione (${target}) con ${model}...`, "info");
+        
         try {
             const res = await fetch(`/api/lab/regenerate/${pid}`, {
                 method: 'POST',
@@ -381,6 +374,7 @@
                 body: JSON.stringify({ model: model, target: target })
             });
             const data = await res.json();
+            
             if(data.status === 'ok') {
                 if(target === 'title' || target === 'all') {
                     const seoInput = document.getElementById(`seo-${pid}`);
@@ -388,94 +382,28 @@
                 }
                 if(target === 'desc' || target === 'all') {
                     const descBox = document.getElementById(`desc-text-${pid}`);
-                    if(descBox && data.ai_description_it) {
-                        descBox.innerText = data.ai_description_it;
-                        descBox.style.color = "var(--accent-gold)";
-                        setTimeout(() => { descBox.style.color = "rgba(255,255,255,0.8)"; }, 2000);
+                    if(descBox && data.ai_description_it) descBox.innerText = data.ai_description_it;
+                }
+                if(target === 'tags' || target === 'all') {
+                    const tagsInput = document.getElementById(`tags-${pid}`);
+                    if(tagsInput && data.tags) {
+                        const tagsStr = Array.isArray(data.tags) ? data.tags.join(", ") : data.tags;
+                        tagsInput.value = tagsStr;
                     }
                 }
-                showToast("🤖 Generazione completata.");
+                showToast(`✨ ${target.toUpperCase()} aggiornato con successo!`, "success");
             } else {
-                showToast("⚠️ L'AI non ha risposto correttamente.");
+                showToast("Errore AI: " + (data.message || "Risposta non valida"), "error");
             }
         } catch(e) { 
             console.error(e);
-            showToast("❌ Errore di connessione."); 
+            showToast("Errore di connessione AI", "error"); 
         } finally {
-            if(btn) {
-                btn.innerHTML = oldHtml;
-                btn.disabled = false;
+            if(targetBtn) {
+                targetBtn.disabled = false;
+                targetBtn.innerHTML = originalBtnHtml;
             }
-        }
-    }
-
-    // Global Search Integration for Lab
-    const searchInput = document.getElementById('global-search');
-    if(searchInput) {
-        searchInput.addEventListener('input', function(e) {
-            const term = e.target.value.toLowerCase();
-            let visibleCount = 0;
-            
-            document.querySelectorAll('.tinder-card').forEach((card, idx) => {
-                const text = card.innerText.toLowerCase();
-                const matched = text.includes(term);
-                card.classList.toggle('search-filtered', !matched);
-                if(matched && idx >= currentIndex) visibleCount++;
-            });
-            
-            // Se la carta attuale è ora filtrata, prova a passare alla prossima visibile
-            const currentCard = document.getElementById(`card-${currentIndex}`);
-            if(currentCard && currentCard.classList.contains('search-filtered')) {
-                // Cerchiamo la prima carta non filtrata >= currentIndex
-                let nextMatch = -1;
-                for(let i = currentIndex; i < totalCards; i++) {
-                    const c = document.getElementById(`card-${i}`);
-                    if(c && !c.classList.contains('search-filtered')) {
-                        nextMatch = i;
-                        break;
-                    }
-                }
-                if(nextMatch !== -1) {
-                    currentIndex = nextMatch;
-                    updateQueueUI();
-                }
-            }
-            
-            const countEl = document.getElementById('queue-count');
-            if(countEl) countEl.innerText = visibleCount;
-        });
-    }
-
-    // Keyboard Shortcuts
-    document.addEventListener('keydown', (e) => {
-        if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-        const currentCard = document.getElementById(`card-${currentIndex}`);
-        if(!currentCard) return;
-        const pid = currentCard.getAttribute('data-id');
-
-        if(e.code === 'ArrowRight') handleSwipe('right', currentIndex, pid);
-        if(e.code === 'ArrowLeft') handleSwipe('left', currentIndex, pid);
-        if(e.code === 'ArrowDown') handleSwipe('bottom', currentIndex, pid);
-    });
-
-    function switchSpotlight(pid) {
-        if(!pid) return;
-        const allCards = document.querySelectorAll('.tinder-card');
-        let targetIdx = -1;
-        allCards.forEach((card, idx) => {
-            if(card.getAttribute('data-id') == pid) targetIdx = idx;
-        });
-        
-        if(targetIdx !== -1) {
-            currentIndex = targetIdx;
-            updateQueueUI();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     }
 </script>
-
-<style>
-    .search-filtered { display: none !important; }
-</style>
-{% endif %}
 {% endblock %}

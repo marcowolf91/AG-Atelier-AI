@@ -240,8 +240,13 @@ async function generateSEOtitle() {
     if(!pid) return;
     btn.disabled = true;
     btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> GENERAZIONE...';
+    const model = localStorage.getItem('atelier_preferred_model') || 'llama3';
     try {
-        const res = await fetch(`/api/lab/generate-seo/${pid}`, { method: 'POST' });
+        const res = await fetch(`/api/lab/generate-seo/${pid}`, { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ model: model })
+        });
         const data = await res.json();
         if(data.status === 'ok') {
             input.value = data.seo_title;
@@ -261,13 +266,19 @@ async function generateTags() {
     if(!pid) return;
     btn.disabled = true;
     btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> GENERAZIONE...';
+    const model = localStorage.getItem('atelier_preferred_model') || 'llama3';
     try {
-        const res = await fetch(`/api/lab/generate-tags/${pid}`, { method: 'POST' });
+        const res = await fetch(`/api/lab/generate-tags/${pid}`, { 
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ model: model })
+        });
         const data = await res.json();
         if(data.status === 'ok') {
             const tags = Array.isArray(data.tags) ? data.tags.join(', ') : data.tags;
-            textarea.value = tags;
-            showToast("✨ Tag ottimizzati.");
+            textarea.value = tags || '';
+            if(!tags) showToast("L'AI non ha generato nuovi tag.", "warning");
+            else showToast("✨ Tag ottimizzati.");
         }
     } catch(e) { showToast("Errore generazione tag.", "error"); }
     finally {
