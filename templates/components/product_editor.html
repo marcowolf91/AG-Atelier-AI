@@ -250,6 +250,10 @@ async function generateSEOtitle() {
         const data = await res.json();
         if(data.status === 'ok') {
             input.value = data.seo_title;
+            const engineLabel = document.getElementById('edit-source-engine');
+            if(engineLabel && data.engine) {
+                engineLabel.innerText = `SOURCE ENGINE: ${data.engine}`;
+            }
             showToast("✨ Titolo SEO ottimizzato.");
         }
     } catch(e) { showToast("Errore generazione SEO.", "error"); }

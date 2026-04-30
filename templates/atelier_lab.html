@@ -92,9 +92,9 @@
                     <div class="glass-panel" style="flex: 1; padding: 16px; font-size: 0.8rem; line-height: 1.6; overflow: hidden; display: flex; flex-direction: column; background: rgba(0,0,0,0.2);">
                         <div style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                             <span style="display: flex; align-items: center; gap: 8px;"><i class="ph-duotone ph-sparkle"></i> AI NARRATIVE</span>
-                            <button onclick="regenerateAI(event, {{ item.id }}, 'desc')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA ORA</button>
+                            <button type="button" onclick="regenerateAI(event, {{ item.id }}, 'desc')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA ORA</button>
                         </div>
-                        <div id="desc-text-{{ item.id }}" style="color: rgba(255,255,255,0.4); flex: 1; overflow-y: auto; font-style: italic;">{{ item.ai_description_it or 'In attesa di generazione... Clicca "GENERA ORA" per iniziare.' }}</div>
+                        <div contenteditable="true" id="desc-text-{{ item.id }}" style="color: rgba(255,255,255,0.7); flex: 1; overflow-y: auto; font-style: italic; white-space: pre-wrap; outline: none; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.02);">{{ item.ai_description_it or 'In attesa di generazione... Clicca "GENERA ORA" per iniziare.' }}</div>
                     </div>
                     
                     <div style="display: flex; gap: 8px; height: 80px; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
@@ -140,8 +140,8 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <label style="font-size: 0.65rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase;">Titolo SEO Certificato</label>
                         <div style="display: flex; gap: 8px;">
-                            <button onclick="regenerateAI(event, {{ item.id }}, 'title')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA CON AI</button>
-                            <button onclick="fixWithVision(event, {{ item.id }})" class="btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px; background: var(--accent-gold); color: #000; border: none; font-weight: 800;">
+                            <button type="button" onclick="regenerateAI(event, {{ item.id }}, 'title')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA CON AI</button>
+                            <button type="button" onclick="fixWithVision(event, {{ item.id }})" class="btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px; background: var(--accent-gold); color: #000; border: none; font-weight: 800;">
                                 <i class="ph ph-sparkle"></i> CORREGGI CON VISIONE AI
                             </button>
                         </div>
@@ -154,7 +154,7 @@
                 <div class="input-group">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <label style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">Smart Tags</label>
-                        <button onclick="regenerateAI(event, {{ item.id }}, 'tags')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA TAG</button>
+                        <button type="button" onclick="regenerateAI(event, {{ item.id }}, 'tags')" class="btn glass-btn" style="height: 20px; font-size: 0.5rem; padding: 0 8px;">GENERA TAG</button>
                     </div>
                     <input type="text" class="glass-input" id="tags-{{ item.id }}" value="{{ item.tags or '' }}" placeholder="tag1, tag2..." style="width: 100%; background: rgba(255,255,255,0.03);">
                 </div>
@@ -170,7 +170,7 @@
                         <option value="llama3">Llama 3 (Meta Local - Privacy & Speed)</option>
                     </select>
                 </div>
-                <button onclick="regenerateAI(event, {{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
+                <button type="button" onclick="regenerateAI(event, {{ item.id }})" id="btn-reg-{{ item.id }}" class="btn glass-btn" style="height: 44px; width: 44px; padding: 0; justify-content: center; margin-top: 18px;" title="Re-Boost AI">
                     <i class="ph-duotone ph-magic-wand"></i>
                 </button>
             </div>
@@ -308,13 +308,21 @@
         card.classList.add(direction === 'right' ? 'card-out-right' : 'card-out-left');
         
         if(direction === 'right') {
+            const seoTitle = document.getElementById(`seo-${productId}`).value;
+            if(!seoTitle || seoTitle.trim().length < 5) {
+                showToast("⚠️ Impossibile certificare: manca il Titolo SEO!", "error");
+                card.classList.remove('card-out-right'); // Annulla l'animazione
+                return;
+            }
+
             const payload = {
-                seo_title: document.getElementById(`seo-${productId}`).value,
+                seo_title: seoTitle,
                 tags: document.getElementById(`tags-${productId}`).value,
                 category: document.getElementById(`type-${productId}`).value,
                 material: document.getElementById(`mat-${productId}`).value,
                 color: document.getElementById(`col-${productId}`).value,
-                dimensions: document.getElementById(`dim-${productId}`).value
+                dimensions: document.getElementById(`dim-${productId}`).value,
+                ai_description_it: document.getElementById(`desc-text-${productId}`).innerText
             };
             fetch(`/api/lab/certify/${productId}`, {
                 method: 'POST',
@@ -352,30 +360,55 @@
     }
 
     async function regenerateAI(event, pid, target = 'all') {
+        if(event) event.preventDefault();
+        
+        // Feedback immediato prima di qualsiasi logica pesante
+        showToast(`🤖 Avvio intelligenza artificiale (${target})...`, "info");
+
         const modelEl = document.getElementById(`model-${pid}`);
         const model = modelEl ? modelEl.value : getSelectedModel();
         
-        // Effetto caricamento sul bottone se target è tags
+        // Effetto caricamento sul bottone
         let originalBtnHtml = "";
         let targetBtn = null;
-        if(target === 'tags') {
-            targetBtn = event.target;
+        if(event && event.currentTarget) {
+            targetBtn = event.currentTarget;
             originalBtnHtml = targetBtn.innerHTML;
             targetBtn.disabled = true;
             targetBtn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i>';
         }
 
-        showToast(`🤖 Rigenerazione (${target}) con ${model}...`, "info");
-        
+        // Raccogliamo i dati attuali dalla UI (Sincronizzazione Real-Time) con protezione null
+        const getVal = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : "";
+        };
+
+        const uiData = {
+            seo_title: getVal(`seo-${pid}`),
+            category: getVal(`type-${pid}`),
+            material: getVal(`mat-${pid}`),
+            color: getVal(`col-${pid}`),
+            dimensions: getVal(`dim-${pid}`)
+        };
+
         try {
             const res = await fetch(`/api/lab/regenerate/${pid}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ model: model, target: target })
+                body: JSON.stringify({ 
+                    model: model || 'llama3', // Fallback se il menu è vuoto
+                    target: target,
+                    ui_data: uiData 
+                })
             });
             const data = await res.json();
             
             if(data.status === 'ok') {
+                // Aggiorniamo sempre l'etichetta dell'engine per trasparenza
+                const engineEl = document.getElementById(`engine-source-${pid}`);
+                if(engineEl && data.engine) engineEl.innerText = data.engine;
+
                 if(target === 'title' || target === 'all') {
                     const seoInput = document.getElementById(`seo-${pid}`);
                     if(seoInput && data.seo_title) seoInput.value = data.seo_title;

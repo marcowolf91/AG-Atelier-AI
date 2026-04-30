@@ -2278,59 +2278,110 @@ async def perform_drive_rename(product, new_title):
         drive_service.files().update(fileId=f['id'], body={'name': new_filename}, supportsAllDrives=True).execute()
         idx += 1
 
+
 @app.post("/api/lab/regenerate/{product_id}")
 async def lab_regenerate(product_id: int, request: Request, db: Session = Depends(get_db)):
-    data = await request.json()
-    model_choice = data.get("model", "llama3")
-    target = data.get("target", "all")
-    
-    item = db.query(Product).filter(Product.id == product_id).first()
-    if not item: return {"status": "error", "message": "Prodotto non trovato"}
-
-    async def get_ai_response(prompt, model_name):
-        if model_name == "gemini":
-            api_key = auth_manager.get_raw_api_key("gemini")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(url, json=payload, timeout=30.0)
-                res_data = resp.json()
-                return res_data['candidates'][0]['content']['parts'][0]['text']
-        
-        elif model_name == "openai":
-            api_key = auth_manager.get_raw_api_key("openai")
-            from openai import AsyncOpenAI
-            ai_client = AsyncOpenAI(api_key=api_key)
-            resp = await ai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return resp.choices[0].message.content
-        
-        else: # Llama o locale
-            import ollama_bridge
-            return await ollama_bridge.generate_narrative(model_name, prompt)
-
     try:
-        # Per massime prestazioni e coerenza, usiamo il motore del Harvester per tutto
-        from harvester import HarvesterEngine
-        engine = HarvesterEngine()
+        data = await request.json()
+        model_choice = data.get("model", "llama3:latest")
+        target = data.get("target", "all")
         
-        # Eseguiamo il processo completo (Title, Desc, Tags) usando le regole centralizzate
-        result = await engine.process_single_product(product_id, db, model_choice)
-        return result
+        from ai_agent import AIAgent
+        agent = AIAgent()
+        
+        item = db.query(Product).filter(Product.id == product_id).first()
+        if not item: return {"status": "error", "message": "Prodotto non trovato"}
+        
+        # Sincronizzazione dati dalla UI (per far sì che l'AI legga le tue modifiche a schermo)
+        ui_data = data.get("ui_data", {})
+        if ui_data:
+            if ui_data.get("seo_title"): item.seo_title = ui_data["seo_title"]
+            if ui_data.get("category"): item.category = ui_data["category"]
+            if ui_data.get("material"): item.material = ui_data["material"]
+            if ui_data.get("color"): item.color = ui_data["color"]
+            if ui_data.get("dimensions"): item.dimensions = ui_data["dimensions"]
+            # Nota: Non facciamo il commit qui, lo facciamo alla fine se la generazione ha successo
+            
+        # Determiniamo lo stile
+        is_regen = bool(item.ai_description_it and len(item.ai_description_it) > 10)
+        style_name = "BOUTIQUE (MINIMAL)" if is_regen else "HYBRID (SEO)"
+        
+        prompt = agent.build_fashion_prompt(item)
+        res = await agent.get_clean_json(prompt, model_choice)
+        
+        response_data = {
+            "status": "ok", 
+            "engine": f"RE-BOOSTED VIA {model_choice.upper()} | {style_name}"
+        }
+        
+        if target in ['title', 'all']:
+            new_title = res.get("seo_title")
+            if new_title and len(new_title) > 2:
+                item.seo_title = new_title
+            response_data["seo_title"] = item.seo_title
+            
+        if target in ['desc', 'all']:
+            new_desc = res.get("ai_description_it")
+            if new_desc and len(new_desc) > 10:
+                item.ai_description_it = new_desc
+            response_data["ai_description_it"] = item.ai_description_it
+            
+        if target in ['tags', 'all']:
+            raw_tags = res.get("tags", [])
+            if raw_tags:
+                from harvester import HarvesterEngine
+                engine = HarvesterEngine()
+                cleaned_tags = engine._clean_tags(raw_tags)
+                item.tags = ", ".join(cleaned_tags)
+            response_data["tags"] = item.tags
+
+        # Aggiorniamo la dicitura della sorgente per veridicità
+        sandbox = {}
+        if item.raw_harvested_data:
+            try: 
+                sandbox = json.loads(item.raw_harvested_data)
+            except: 
+                pass
+        sandbox["source_engine"] = response_data["engine"]
+        item.raw_harvested_data = json.dumps(sandbox)
+
+        db.commit()
+        return response_data
     except Exception as e:
         import traceback
         print(f"❌ Errore Lab Regenerate: {traceback.format_exc()}")
         return {"status": "error", "message": str(e)}
 
 @app.post("/api/lab/generate-seo/{product_id}")
-async def lab_generate_seo(product_id: int, db: Session = Depends(get_db)):
-    from harvester import HarvesterEngine
-    engine = HarvesterEngine()
-    # Eseguiamo un'elaborazione veloce
-    res = await engine.process_single_product(product_id, db)
-    return {"status": "ok", "seo_title": res.get("seo_title")}
+async def lab_generate_seo(product_id: int, request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    model_choice = data.get("model", "llama3:latest")
+    from ai_agent import AIAgent
+    agent = AIAgent()
+    
+    item = db.query(Product).filter(Product.id == product_id).first()
+    if not item: return {"status": "error", "message": "Prodotto non trovato"}
+    
+    prompt = agent.build_fashion_prompt(item)
+    res = await agent.get_clean_json(prompt, model_choice)
+    
+    seo_title = res.get("seo_title")
+    engine_name = f"RE-BOOSTED VIA {model_choice.upper()}"
+    
+    if seo_title:
+        item.seo_title = seo_title
+        
+        # Aggiorniamo la sorgente
+        sandbox = {}
+        if item.raw_harvested_data:
+            try: sandbox = json.loads(item.raw_harvested_data)
+            except: pass
+        sandbox["source_engine"] = engine_name
+        item.raw_harvested_data = json.dumps(sandbox)
+        
+        db.commit()
+    
+    return {"status": "ok", "seo_title": item.seo_title, "engine": engine_name}
 
 @app.get("/api/system/usage")
 async def system_usage(db: Session = Depends(get_db)):
@@ -2340,7 +2391,7 @@ async def system_usage(db: Session = Depends(get_db)):
 @app.post("/api/lab/generate-tags/{product_id}")
 async def lab_generate_tags(product_id: int, request: Request, db: Session = Depends(get_db)):
     data = await request.json()
-    model_choice = data.get("model", "llama3")
+    model_choice = data.get("model", "llama3:latest")
     from ai_agent import AIAgent
     agent = AIAgent()
     
@@ -2377,10 +2428,20 @@ async def lab_generate_seo(product_id: int, request: Request, db: Session = Depe
     seo_title = res.get("seo_title")
     if seo_title:
         item.seo_title = seo_title
+        
+        # Aggiorniamo anche la dicitura dell'engine per trasparenza (veridicità)
+        sandbox = {}
+        if item.raw_harvested_data:
+            try: sandbox = json.loads(item.raw_harvested_data)
+            except: pass
+        
+        sandbox["source_engine"] = f"RE-BOOSTED VIA {model_choice.upper()}"
+        item.raw_harvested_data = json.dumps(sandbox)
+        
         db.commit()
         db.refresh(item)
     
-    return {"status": "ok", "seo_title": item.seo_title}
+    return {"status": "ok", "seo_title": item.seo_title, "engine": f"RE-BOOSTED VIA {model_choice.upper()}"}
 
 @app.get("/api/shopify/status")
 async def shopify_status():
@@ -2449,15 +2510,38 @@ async def muse_generate(product_id: int, request: Request, db: Session = Depends
     selected_tone_instr = tone_prompts.get(tone, tone_prompts["luxury"])
     
     prompt = (
-        f"{selected_tone_instr}\n"
-        f"Articolo: {item.brand} {item.model}\n"
-        f"Specifiche: Materiale {item.material or 'N/D'}, Colore {item.color or 'N/D'}, Hardware {item.hardware_type or 'N/D'}, Condizioni {item.condition_grade or 'N/D'}.\n"
+        f"RUOLO: {system_role}\n"
+        f"TONO: {selected_tone_instr}\n"
+        f"PRODOTTO: {item.brand} {item.model}\n"
+        f"DETTAGLI TECNICI: Materiale {item.material or 'N/D'}, Colore {item.color or 'N/D'}, Hardware {item.hardware_type or 'N/D'}, Condizioni {item.condition_grade or 'N/D'}.\n"
     )
     
     if instructions:
-        prompt += f"Istruzioni Extra del Cliente: {instructions}\n"
+        prompt += f"NOTE AGGIUNTIVE: {instructions}\n"
         
-    prompt += "\nComponi ora una descrizione accattivante in italiano per il nostro catalogo e-commerce di lusso."
+    # Logica Dinamica: Se esiste già una descrizione, passiamo allo STILE 3 (Boutique)
+    is_regen = bool(item.ai_description_it and len(item.ai_description_it) > 10)
+    
+    style_rules = ""
+    if is_regen:
+        style_rules = (
+            "1. **OPZIONE 3 - BOUTIQUE**: 1-2 frasi di altissimo impatto (lusso estremo).\n"
+            "2. **ELENCO PUNTATO**: Usa i label 'Stato' e 'Corredo'. Ogni punto su una riga.\n"
+        )
+    else:
+        style_rules = (
+            "1. **OPZIONE 2 - IBRIDA**: Gancio emozionale (2-3 righe) + Elenco tecnico.\n"
+            "2. **ELENCO PUNTATO**: Usa 'Materiale', 'Dettagli', 'Condizioni', 'Corredo'. Ogni punto su una riga.\n"
+        )
+
+    prompt += (
+        f"\nREGOLE MANDATORIE DI STRUTTURA E FORMATTAZIONE:\n"
+        f"{style_rules}"
+        "3. **RIGA VUOTA**: Inserisci una riga vuota tra il paragrafo e l'elenco puntato.\n"
+        "4. **VOCABOLARIO**: Mai usare 'sneakers' (usa 'scarpe'), 'comfort' è MASCHILE, 'scarpe' è FEMMINILE PLURALE.\n"
+        "5. **CHIUSURA**: Una riga finale elegante.\n"
+        "\nComponi ora la descrizione in italiano:"
+    )
 
     import ollama_bridge
     # 1. Carica configurazione task (Decidi chi parla)

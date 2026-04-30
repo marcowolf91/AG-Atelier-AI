@@ -114,13 +114,22 @@ class HarvesterEngine:
         """Helper per ottenere risposte JSON robuste da diversi provider AI."""
         import re
         def extract_json(text):
+            if not text or not isinstance(text, str): return {}
             try:
                 # Cerca il blocco { ... } più grande per estrarre il JSON puro
                 match = re.search(r'\{.*\}', text, re.DOTALL)
-                raw_json = match.group(0).strip() if match else text.strip()
-                return json.loads(raw_json)
+                if match:
+                    raw_json = match.group(0).strip()
+                    return json.loads(raw_json)
+                
+                # Prova a pulire se non c'è match ma sembra JSON
+                candidate = text.strip()
+                if candidate.startswith('{') and candidate.endswith('}'):
+                    return json.loads(candidate)
+                
+                return {}
             except Exception as e:
-                add_log(f"⚠️ [AI-Parser] Fallimento parsing JSON da {model_choice}: {str(e)} | Raw: {text[:150]}...")
+                add_log(f"⚠️ [AI-Parser] Fallimento parsing JSON da {model_choice}: {str(e)}")
                 return {}
 
         if model_choice == "gemini":
@@ -399,28 +408,17 @@ class HarvesterEngine:
             item.raw_harvested_data = combined_text
             
             # 2. AI (Priorità Locale via Ollama, Fallback OpenAI)
-            # 2. AI (Multi-Model Routing)
-            prompt = (
-                f"Analizza questi dati per un prodotto di lusso.\n"
-                f"DATI CERTI (MASTER TRUTH): Brand: {item.brand}, Modello: {item.model}, Materiale: {item.material}\n"
-                f"DATI WEB (SOLO PER NARRATIVA): {combined_text}\n\n"
-                "TASK: Genera un JSON con i campi richiesti.\n"
-                "REGOLE FERREE PER IL TITOLO (seo_title):\n"
-                "1. Usa SOLO Brand + Modello + Materiale.\n"
-                "2. NON aggiungere mai nomi di modelli famosi (es. No 'Rockstud', No 'Birkin') se non sono presenti nella MASTER TRUTH.\n"
-                "3. Ignora i nomi di modelli diversi trovati nei DATI WEB se contraddicono il Modello della MASTER TRUTH.\n"
-                "REGOLE TAG: Genera tag per FILTRI Shopify. Includi SEMPRE: Brand, Materiale, Categoria specifica, Genere.\n"
-                "IMPORTANTE TAG:\n"
-                "1. SCRIVI RIGOROSAMENTE IN MINUSCOLO.\n"
-                "2. NON USARE PREFISSI (no 'brand:', no 'categoria:').\n"
-                "3. Usa 'scarpe' al posto di 'sneakers'.\n"
-                "4. Usa 'tela' al posto di 'telera'.\n"
-                "5. Genere: usa 'uomo' o 'donna'.\n"
-                "ESEMPIO DI TAG BUONI: 'valentino', 'scarpe', 'pelle', 'uomo', 'nero'.\n"
-            )
+            # 2. AI (Multi-Model Routing via Centralized AIAgent)
+            from ai_agent import AIAgent
+            agent = AIAgent()
+            prompt = agent.build_fashion_prompt(item)
+            
+            # Arricchimento del prompt con i dati web se presenti
+            if combined_text:
+                prompt += f"\n\nDATI AGGIUNTIVI DAL WEB (USA SOLO PER NARRATIVA):\n{combined_text[:1000]}"
             
             add_log(f"🤖 [AI-Agent] Richiesta a {model_choice} (Master-Priority) per ID {item.id}...")
-            resolved_data = await self.get_ai_json(prompt, model_choice)
+            resolved_data = await agent.get_clean_json(prompt, model_choice)
 
             pass
 
@@ -445,24 +443,26 @@ class HarvesterEngine:
                 else:
                     add_log(f"⚠️ [Harvester] L'AI non ha restituito tag validi per ID {item.id}. Mantengo quelli attuali.")
                 
-                # Update SEO Title e Desc solo se non vuoti
-                new_title = resolved_data.get("seo_title")
-                if new_title and len(new_title) > 5:
-                    item.seo_title = new_title
-                    
-                new_desc = resolved_data.get("ai_description_it")
-                if new_desc and len(new_desc) > 20:
-                    item.ai_description_it = new_desc
-
-                # Sincronizziamo anche la Sandbox per coerenza nell'Harvester
-                sandbox_data = json.loads(item.raw_harvested_data) if item.raw_harvested_data else {}
-                sandbox_data["seo_title"] = item.seo_title
-                sandbox_data["tags"] = cleaned_tags
-                sandbox_data["ai_description_it"] = item.ai_description_it
+                # Sincronizziamo la Sandbox (Carantena Dati) - NON sovrascriviamo mai i campi certificati direttamente
+                sandbox_data = json.loads(item.raw_harvested_data) if item.raw_harvested_data and item.raw_harvested_data.startswith('{') else {}
+                
+                # Proposte AI (da validare nello Spotlight)
+                sandbox_data["proposed_seo_title"] = resolved_data.get("seo_title")
+                sandbox_data["proposed_description"] = resolved_data.get("ai_description_it")
+                sandbox_data["proposed_tags"] = cleaned_tags
+                
+                # Salvataggio tecnico per lo stato dell'engine
+                sandbox_data["material"] = self._sanitize(resolved_data.get("material", item.material))
+                sandbox_data["status"] = "PRELIMINARY"
+                
                 item.raw_harvested_data = json.dumps(sandbox_data)
 
+                # Aggiorniamo i tag solo se il prodotto è ancora in Draft (opzionale, decidiamo noi)
+                if item.status == ProductStatus.Draft and not item.tags:
+                    item.tags = ", ".join(cleaned_tags)
+
                 db.commit()
-                add_log(f"🧪 [Harvester] Risultati salvati e sincronizzati per ID {item.id} (Via {model_choice}).")
+                add_log(f"🧪 [Harvester] Proposte AI salvate nella Sandbox per ID {item.id}. In attesa di revisione umana.")
                 
                 # Assicuriamoci che i tag siano nel risultato ritornato alla UI
                 return {

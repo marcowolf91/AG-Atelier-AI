@@ -2,7 +2,7 @@ import httpx
 import asyncio
 from typing import Optional, List, Dict
 
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = "http://127.0.0.1:11434"
 
 async def check_ollama_status() -> bool:
     """Controlla se il demone locale Ollama è attivo e in esecuzione."""
@@ -65,6 +65,7 @@ async def generate_narrative(model: str, prompt: str):
             response = await client.post(f"{OLLAMA_HOST}/api/generate", json={
                 "model": model,
                 "prompt": prompt,
+                "format": "json",
                 "stream": False
             })
             if response.status_code == 200:

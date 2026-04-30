@@ -10,6 +10,7 @@ class AIAgent:
 
     async def get_clean_json(self, prompt, model_choice="llama3"):
         """Chiama l'AI e garantisce la restituzione di un oggetto JSON pulito."""
+        data = {}
         if model_choice == "gemini":
             api_key = get_raw_api_key("gemini")
             url = f"{self.gemini_url}?key={api_key}"
@@ -19,43 +20,84 @@ class AIAgent:
                 res_data = resp.json()
                 try:
                     text_out = res_data['candidates'][0]['content']['parts'][0]['text']
-                    return self.extract_json(text_out)
-                except: return {}
+                    data = self.extract_json(text_out)
+                except: data = {}
         else:
             import ollama_bridge
-            res = await ollama_bridge.generate_narrative(model_choice, prompt)
-            return self.extract_json(res)
+            real_model = "llama3:latest" if model_choice == "llama3" else model_choice
+            res = await ollama_bridge.generate_narrative(real_model, prompt)
+            data = self.extract_json(res)
+            
+        return data
 
     def extract_json(self, text):
-        if not text: return {}
+        if not text or not isinstance(text, str): return {}
         try:
             match = re.search(r'\{.*\}', text, re.DOTALL)
-            raw_json = match.group(0).strip() if match else text.strip()
-            return json.loads(raw_json)
+            if match:
+                raw_json = match.group(0).strip()
+                return json.loads(raw_json)
+            
+            candidate = text.strip()
+            if candidate.startswith('{') and candidate.endswith('}'):
+                return json.loads(candidate)
+            
+            return {}
         except: return {}
 
     def build_fashion_prompt(self, item):
-        """Costruisce il prompt specifico per la categorizzazione moda."""
-        return f"""
-        Analizza questo prodotto di lusso per Shopify.
-        DATI MASTER: Brand: {item.brand}, Modello: {item.model}, Materiale: {item.material}, Categoria: {item.category}
+        """Costruisce il prompt specifico per la moda con esempi reali (Few-Shot)."""
         
-        TASK: Genera un JSON con:
-        1. 'tags': Una lista di stringhe pulite. 
-           REGOLE CRITICHE PER I TAG:
-           - SCRIVI TUTTO RIGOROSAMENTE IN MINUSCOLO.
-           - NON USARE PREFISSI (NO 'brand:', NO 'categoria:', etc.).
-           - I tag devono essere SOLO i valori (es: "valentino", non "VALENTINO").
-           - Usa 'scarpe' al posto di 'sneakers'.
-           - Usa 'tela' al posto di 'telera'.
-           - Usa 'uomo' o 'donna' per il genere.
-        2. 'seo_title': Brand + Modello + Materiale (in Title Case).
-        3. 'ai_description_it': Descrizione elegante in italiano.
+        # Logica Dinamica per lo Stile
+        is_regen = bool(item.ai_description_it and len(item.ai_description_it) > 10)
         
-        FORMATO RICHIESTO:
-        {{
-          "seo_title": "...",
-          "tags": ["valentino", "scarpe", "tela", "uomo"],
-          "ai_description_it": "..."
-        }}
+        # DATI MASTER
+        brand = item.brand if item.brand else "N/D"
+        model = item.model if item.model else "N/D"
+
+        if is_regen:
+            # OPZIONE 3: BOUTIQUE
+            style_instruction = f"""
+            STRUTTURA: Un paragrafo corto di massimo 2 righe + elenco puntato breve.
+            ESEMPIO:
+            Un'icona di stile senza tempo. L'eleganza firmata Valentino elevata alla massima potenza.
+            
+            - **Stato:** Ottimo
+            - **Corredo:** Scatola originale inclusa
+            """
+        else:
+            # OPZIONE 2: IBRIDA
+            style_instruction = f"""
+            STRUTTURA: Un paragrafo emozionale di 3 righe + dati tecnici chiari.
+            ESEMPIO:
+            Queste scarpe Valentino in tela rappresentano la sintesi perfetta tra artigianalità e stile moderno. Ideali per chi cerca un pezzo iconico ma versatile, capace di completare ogni outfit con l'eleganza distintiva del brand.
+            
+            Materiale: Tela di alta qualità
+            Dettagli: Design minimalista, suola confortevole
+            Condizioni: Ottime, pronte all'uso
+            Corredo: Scatola originale inclusa
+            """
+
+        full_prompt = f"""
+        # ISTRUZIONI PER CATALOGO DI LUSSO
+        
+        DATI PRODOTTO: 
+        - Titolo Attuale: {item.seo_title or 'N/D'}
+        - Brand: {brand}
+        - Modello: {model}
+        - Materiale: {item.material or 'N/D'}
+        - Categoria: {item.category or 'N/D'}
+        - Condizioni: {item.condition_grade or 'N/D'}
+        - Corredo/Accessori: {item.accessories_included or 'N/D'}
+        
+        ## TASK: Genera un JSON con 'seo_title', 'tags' e 'ai_description_it'.
+        
+        IMPORTANTE: La descrizione DEVE seguire questo stile:
+        {style_instruction}
+        
+        REGOLE:
+        1. NON USARE 'SNEAKERS', usa 'Scarpe' o 'Calzature'.
+        2. Lingua: ITALIANO.
+        3. Formato: JSON PURO.
         """
+        return full_prompt
