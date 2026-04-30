@@ -1,3 +1,4 @@
+# Version: 1.2-STABLE - Atelier Lab Fixed
 from fastapi import FastAPI, Depends, Request, Form, BackgroundTasks, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
