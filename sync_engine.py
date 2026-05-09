@@ -248,7 +248,7 @@ class SyncEngine:
                         "material": idx_mat, "color": idx_col, "condition_grade": idx_cond,
                         "accessories_included": idx_acc, "hardware_type": idx_hard,
                         "dimensions": idx_dim, "handle_drop": idx_drop, "location": idx_loc,
-                        "size": idx_size, "serial_number": idx_serial, "fit": idx_fit
+                        "size": idx_size, "sku": idx_serial, "fit": idx_fit
                     }
                     for field, idx in idx_map.items():
                         if idx is not None and idx < len(padded): 
@@ -277,7 +277,7 @@ class SyncEngine:
                         "material": idx_mat, "color": idx_col, "condition_grade": idx_cond,
                         "accessories_included": idx_acc, "hardware_type": idx_hard,
                         "dimensions": idx_dim, "handle_drop": idx_drop, "location": idx_loc,
-                        "size": idx_size, "serial_number": idx_serial, "fit": idx_fit
+                        "size": idx_size, "sku": idx_serial, "fit": idx_fit
                     }
                     for field, idx in idx_map.items():
                         if idx is not None and idx < len(padded): 

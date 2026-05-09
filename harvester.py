@@ -244,7 +244,14 @@ class HarvesterEngine:
             "female": "donna",
             "sneakers": "scarpe",
             "sneaker": "scarpe",
-            "telera": "tela"
+            "telera": "tela",
+            "glasses": "occhiali",
+            "sunglasses": "occhiali",
+            "hat": "cappello",
+            "cap": "cappello",
+            "clothing": "abbigliamento",
+            "shirt": "camicia",
+            "t-shirt": "t-shirt"
         }
 
         cleaned = []

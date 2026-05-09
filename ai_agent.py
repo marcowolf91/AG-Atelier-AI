@@ -78,6 +78,18 @@ class AIAgent:
             Corredo: Scatola originale inclusa
             """
 
+        # LOGICA GENERE / CATEGORIA
+        cat_low = (item.category or "").lower()
+        gender_hint = "l'articolo" # Default
+        if "borsa" in cat_low or "pochette" in cat_low or "scarpe" in cat_low or "donna" in cat_low:
+            gender_hint = "la borsa / la calzatura (femminile)"
+        if "zaino" in cat_low or "uomo" in cat_low or "abbigliamento" in cat_low:
+            gender_hint = "lo zaino / il capo (maschile)"
+        if "occhiali" in cat_low:
+            gender_hint = "gli occhiali (maschile plurale)"
+        if "cappelli" in cat_low:
+            gender_hint = "il cappello / i cappelli (maschile)"
+
         full_prompt = f"""
         # ISTRUZIONI PER CATALOGO DI LUSSO
         
@@ -98,6 +110,7 @@ class AIAgent:
         REGOLE:
         1. NON USARE 'SNEAKERS', usa 'Scarpe' o 'Calzature'.
         2. Lingua: ITALIANO.
-        3. Formato: JSON PURO.
+        3. Genere: Assicurati di usare articoli e aggettivi corretti per {gender_hint}.
+        4. Formato: JSON PURO.
         """
         return full_prompt
