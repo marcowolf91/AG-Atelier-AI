@@ -38,16 +38,16 @@
     <div id="engine-batch-info" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 800; letter-spacing: 1px; min-width: 80px; text-align: right;">0 / 0</div>
 </div>
 
-<div class="glass-panel" style="padding: 0; overflow: hidden; border: 1px solid var(--glass-border);">
+<div class="glass-panel" style="padding: 0; overflow-x: auto; border: 1px solid var(--glass-border);">
     <table class="inventory-table">
         <thead>
             <tr>
                 <th onclick="sortTable('id')" style="width: 80px; padding-left:24px; cursor: pointer;"># <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
                 <th style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleAll(this)"></th>
-                <th onclick="sortTable('pim')" style="cursor: pointer;">Sorgente PIM <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
-                <th onclick="sortTable('category')" style="cursor: pointer;">Tipo Prodotto <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
-                <th onclick="sortTable('score')" style="cursor: pointer;">Integrità Scheda <i class="ph ph-caret-up-down" style="font-size: 0.7rem;"></i></th>
-                <th>Mapping SEO</th>
+                <th onclick="sortTable('pim')" style="cursor: pointer;">Sorgente PIM <i class="ph ph-caret-down" style="font-size: 0.7rem;"></i></th>
+                <th onclick="sortTable('category')" style="cursor: pointer;">Tipo Prodotto <i class="ph ph-caret-down" style="font-size: 0.7rem;"></i></th>
+                <th onclick="sortTable('score')" style="cursor: pointer;">Integrità Scheda <i class="ph ph-caret-down" style="font-size: 0.7rem;"></i></th>
+                <th style="width: 300px;">Mapping SEO</th>
                 <th>Parametri Tecnici</th>
                 <th style="text-align: right; padding-right: 24px;">Azioni</th>
             </tr>
@@ -345,7 +345,7 @@
                     seoCol.innerHTML = `
                         <div style="font-size: 0.8rem; color: #fff; display: flex; align-items: center; gap: 6px; animation: slideIn 0.5s ease;">
                             <i class="ph-fill ph-check-circle" style="color: #10b981;"></i>
-                            <span style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${summary.seo_title || 'Pronto'}</span>
+                            <span style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${summary.seo_title || 'Arricchito (Verificare)'}</span>
                         </div>
                     `;
                 }
@@ -552,11 +552,11 @@
                 </div>
             </div>
             <div class="comparison-grid" style="display: grid; grid-template-columns: 120px 1fr 1.2fr 60px; gap: 20px; align-items: center;">
-                ${renderCompRow('Titolo SEO', 'seo_title', cur.seo_title, pre.seo_title)}
-                ${renderCompRow('Materiale', 'material', cur.material, pre.material)}
-                ${renderCompRow('Dimensioni', 'dimensions', cur.dimensions, pre.dimensions)}
-                ${renderCompRow('Tags', 'tags', cur.tags, (pre.tags && Array.isArray(pre.tags)) ? pre.tags.join(', ') : pre.tags)}
-                ${renderCompRow('Descrizione', 'ai_description_it', cur.ai_description_it, pre.ai_description_it, true, true, p.id)}
+                ${renderCompRow('Titolo SEO', 'seo_title', cur.seo_title, pre.proposed_seo_title || pre.seo_title)}
+                ${renderCompRow('Materiale', 'material', cur.material, pre.material || pre.proposed_material)}
+                ${renderCompRow('Dimensioni', 'dimensions', cur.dimensions, pre.dimensions || pre.proposed_dimensions)}
+                ${renderCompRow('Tags', 'tags', cur.tags, (pre.proposed_tags && Array.isArray(pre.proposed_tags)) ? pre.proposed_tags.join(', ') : (pre.proposed_tags || pre.tags))}
+                ${renderCompRow('Descrizione', 'ai_description_it', cur.ai_description_it, pre.proposed_description || pre.ai_description_it, true, true, p.id)}
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 40px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.05);">
                 <button onclick="changeSpotlight(-1)" class="btn glass-btn" ${spotlightIndex === 0 ? 'disabled style="opacity:0.2;"' : ''}>

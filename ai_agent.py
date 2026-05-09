@@ -58,24 +58,25 @@ class AIAgent:
         if is_regen:
             # OPZIONE 3: BOUTIQUE
             style_instruction = f"""
-            STRUTTURA: Un paragrafo corto di massimo 2 righe + elenco puntato breve.
+            STRUTTURA OBBLIGATORIA: Un paragrafo intro di 2 righe, seguito da un elenco puntato con i dati tecnici.
             ESEMPIO:
-            Un'icona di stile senza tempo. L'eleganza firmata Valentino elevata alla massima potenza.
+            Un'opera di design che incarna la maestria artigianale e il lusso contemporaneo, pensata per distinguersi con sobria eleganza.
             
-            - **Stato:** Ottimo
-            - **Corredo:** Scatola originale inclusa
+            - **Materiale:** [inserire materiale]
+            - **Condizioni:** [inserire condizioni fornite nei Dati Prodotto]
+            - **Corredo:** [inserire corredo fornito nei Dati Prodotto]
             """
         else:
             # OPZIONE 2: IBRIDA
             style_instruction = f"""
-            STRUTTURA: Un paragrafo emozionale di 3 righe + dati tecnici chiari.
+            STRUTTURA OBBLIGATORIA: Un paragrafo descrittivo di 3 righe, seguito RIGOROSAMENTE da un elenco con i dettagli tecnici.
             ESEMPIO:
-            Queste scarpe Valentino in tela rappresentano la sintesi perfetta tra artigianalità e stile moderno. Ideali per chi cerca un pezzo iconico ma versatile, capace di completare ogni outfit con l'eleganza distintiva del brand.
+            Questo modello esclusivo unisce linee decise e texture pregiate, riflettendo l'identità autentica della maison. La cura per i dettagli e i materiali scelti garantiscono un accessorio dal fascino ineguagliabile.
             
-            Materiale: Tela di alta qualità
-            Dettagli: Design minimalista, suola confortevole
-            Condizioni: Ottime, pronte all'uso
-            Corredo: Scatola originale inclusa
+            Materiale: [inserire materiale]
+            Dettagli: Design iconico, finiture di pregio
+            Condizioni: [inserire condizioni fornite nei Dati Prodotto]
+            Corredo: [inserire corredo fornito nei Dati Prodotto]
             """
 
         # LOGICA GENERE / CATEGORIA
@@ -109,8 +110,9 @@ class AIAgent:
         
         REGOLE:
         1. NON USARE 'SNEAKERS', usa 'Scarpe' o 'Calzature'.
-        2. Lingua: ITALIANO.
-        3. Genere: Assicurati di usare articoli e aggettivi corretti per {gender_hint}.
-        4. Formato: JSON PURO.
+        2. Lingua: RIGOROSAMENTE ITALIANO. Evita termini inglesi come 'this bag' o 'must-have'.
+        3. Genere e Numero: USA SEMPRE IL SINGOLARE (es. "questa borsa", "questo modello", NON "queste borse") a meno che il prodotto non sia intrinsecamente plurale come gli occhiali. Assicurati di usare articoli e aggettivi corretti per {gender_hint}.
+        4. Creatività e Originalità: VARIA SEMPRE IL LESSICO E LA STRUTTURA. NON usare MAI frasi fatte o cliché come "sintesi perfetta", "ideale per chi cerca", "must-have", "destinati a diventare". Sii descrittivo, elegante e unico per ogni prodotto. Focalizzati sulle caratteristiche reali e sull'heritage del brand.
+        5. Formato: JSON PURO.
         """
         return full_prompt

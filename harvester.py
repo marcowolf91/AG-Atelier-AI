@@ -257,7 +257,7 @@ class HarvesterEngine:
         cleaned = []
         seen = set()
         for tag in tags_list:
-            # Pulisce la stringa base (senza forzare lowercase qui)
+            # Pulisce la stringa base
             t = tag.strip().replace("'", "").replace('"', '')
             
             # RIMOZIONE PREFISSI (es: "brand:VALENTINO" -> "VALENTINO")
@@ -279,12 +279,20 @@ class HarvesterEngine:
                     is_banned = True
                     break
             
-            if not is_banned and len(t) > 2 and t_low not in seen:
-                # Forza RIGOROSAMENTE il minuscolo per tutti i tag come richiesto
-                t = t_low
-                
-                cleaned.append(t)
-                seen.add(t_low)
+            if not is_banned and t_low not in seen:
+                # SPLIT TAG COMPOSTI (es. "borse donna" -> "borse", "donna")
+                # Solo se contengono parole chiave specifiche per evitare di rompere i brand
+                if " " in t_low and any(word in t_low for word in ["borsa", "borse", "scarpe", "scarpa", "abbigliamento", "donna", "uomo"]):
+                    parts = t_low.split(" ")
+                    for p in parts:
+                        p_clean = p.strip()
+                        if len(p_clean) > 2 and p_clean not in seen:
+                            cleaned.append(p_clean)
+                            seen.add(p_clean)
+                else:
+                    cleaned.append(t_low)
+                    seen.add(t_low)
+        
         return cleaned
 
     def _sanitize(self, v):
