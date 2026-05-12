@@ -248,7 +248,11 @@
             
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
-                    <div style="font-size:0.6rem; color:var(--accent-gold); font-weight:800; text-transform:uppercase;">${p.brand}</div>
+                    <div style="font-size:0.6rem; color:var(--accent-gold); font-weight:800; text-transform:uppercase;">
+                        ${p.brand} 
+                        ${p.category ? `<span style="color:var(--text-secondary); margin-left:4px; font-weight:600;">| ${p.category}</span>` : ''}
+                        ${p.color ? `<span style="color:var(--text-secondary); margin-left:4px; font-weight:600;">| ${p.color}</span>` : ''}
+                    </div>
                     <div style="display:flex; gap:5px; align-items:center;">
                         ${imageCount > 0 ? `<span style="font-size:0.5rem; background:#4CAF50; color:#fff; padding:1px 5px; border-radius:3px; font-weight:700;"><i class="ph ph-images"></i> ${imageCount} MATCHED</span>` : ''}
                         ${p.material ? `<span style="font-size:0.5rem; background:rgba(255,255,255,0.1); padding:1px 5px; border-radius:3px; color:#fff; font-weight:700; border:1px solid var(--accent-gold);">${p.material}</span>` : ''}

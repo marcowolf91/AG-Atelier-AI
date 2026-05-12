@@ -377,7 +377,11 @@ class HarvesterEngine:
                     add_log(f"⚠️ Errore nel coroutine engine per ID {pid}: {str(ex_coro)}")
                 
                 ENGINE_STATE["processed_count"] += 1
-                ENGINE_STATE["current_batch_ids"].append(pid)
+                
+                # Aggiungiamo al batch Spotlight SOLO se non è andato in errore
+                p_check = db.query(Product).filter(Product.id == pid).first()
+                if p_check and p_check.status != ProductStatus.Error:
+                    ENGINE_STATE["current_batch_ids"].append(pid)
                 
             # Alla fine del ciclo (sia per limite batch che per fine coda), chiediamo SEMPRE conferma
             if ENGINE_STATE["current_batch_ids"]:
@@ -420,9 +424,8 @@ class HarvesterEngine:
                 snippets = [f"Data for {item.brand} {item.model}"]
 
             combined_text = "\n".join(snippets)
-            item.raw_harvested_data = combined_text
+            # Salvataggio provvisorio rimosso per non corrompere la sandbox JSON
             
-            # 2. AI (Priorità Locale via Ollama, Fallback OpenAI)
             # 2. AI (Multi-Model Routing via Centralized AIAgent)
             from ai_agent import AIAgent
             agent = AIAgent()
@@ -435,62 +438,40 @@ class HarvesterEngine:
             add_log(f"🤖 [AI-Agent] Richiesta a {model_choice} (Master-Priority) per ID {item.id}...")
             resolved_data = await agent.get_clean_json(prompt, model_choice)
 
-            pass
+            if not resolved_data:
+                raise Exception("L'AI non ha restituito dati JSON validi o il parsing è fallito.")
 
-            if resolved_data:
-                # ISOLAMENTO SANDBOX: Salviamo in raw_harvested_data come JSON preliminare
-                preliminary_results = {
-                    "seo_title": self._clean_seo_title(resolved_data.get("seo_title", "")),
-                    "material": self._sanitize_material(resolved_data.get("material", "")),
-                    "dimensions": self._sanitize(resolved_data.get("dimensions", "")),
-                    "product_type": item.category if item.category else self._sanitize(resolved_data.get("product_type", "")),
-                    "ai_description_it": self._sanitize(resolved_data.get("ai_description_it", "")),
-                    "status": "PRELIMINARY"
-                }
-                
-                # Tag Management
-                raw_tags = resolved_data.get("tags", [])
-                cleaned_tags = self._clean_tags(raw_tags)
-                
-                # Salviamo solo se abbiamo ottenuto qualcosa di sensato
-                if cleaned_tags:
-                    item.tags = ", ".join(cleaned_tags)
-                else:
-                    add_log(f"⚠️ [Harvester] L'AI non ha restituito tag validi per ID {item.id}. Mantengo quelli attuali.")
-                
-                # Sincronizziamo la Sandbox (Carantena Dati) - NON sovrascriviamo mai i campi certificati direttamente
-                sandbox_data = json.loads(item.raw_harvested_data) if item.raw_harvested_data and item.raw_harvested_data.startswith('{') else {}
-                
-                # Proposte AI (da validare nello Spotlight)
-                sandbox_data["proposed_seo_title"] = resolved_data.get("seo_title")
-                sandbox_data["proposed_description"] = resolved_data.get("ai_description_it")
-                sandbox_data["proposed_tags"] = cleaned_tags
-                
-                # Salvataggio tecnico per lo stato dell'engine
-                sandbox_data["material"] = self._sanitize(resolved_data.get("material", item.material))
-                sandbox_data["status"] = "PRELIMINARY"
-                
-                item.raw_harvested_data = json.dumps(sandbox_data)
-
-                # Aggiorniamo i tag solo se il prodotto è ancora in Draft (opzionale, decidiamo noi)
-                if item.status == ProductStatus.Draft and not item.tags:
-                    item.tags = ", ".join(cleaned_tags)
-
-                db.commit()
-                add_log(f"🧪 [Harvester] Proposte AI salvate nella Sandbox per ID {item.id}. In attesa di revisione umana.")
-                
-                # Assicuriamoci che i tag siano nel risultato ritornato alla UI
-                return {
-                    "status": "ok",
-                    "seo_title": item.seo_title,
-                    "ai_description_it": item.ai_description_it,
-                    "tags": item.tags,
-                    "material": item.material,
-                    "dimensions": item.dimensions
-                }
+            # Tag Management
+            raw_tags = resolved_data.get("tags", [])
+            cleaned_tags = self._clean_tags(raw_tags)
             
-            # --- PHASE 2.5: THE DEEP MAPPER (Drive Folder Matching) ---
-            # STANDBY - Disabilitato temporaneamente su richiesta utente
+            # Salviamo solo se abbiamo ottenuto qualcosa di sensato
+            if cleaned_tags:
+                item.tags = ", ".join(cleaned_tags)
+            else:
+                add_log(f"⚠️ [Harvester] L'AI non ha restituito tag validi per ID {item.id}. Mantengo quelli attuali.")
+            
+            # Sincronizziamo la Sandbox (Carantena Dati) - NON sovrascriviamo mai i campi certificati direttamente
+            sandbox_data = json.loads(item.raw_harvested_data) if item.raw_harvested_data and item.raw_harvested_data.startswith('{') else {}
+            
+            # Proposte AI (da validare nello Spotlight)
+            sandbox_data["proposed_seo_title"] = resolved_data.get("seo_title")
+            sandbox_data["proposed_description"] = resolved_data.get("ai_description_it")
+            sandbox_data["proposed_tags"] = cleaned_tags
+            
+            # Salvataggio tecnico per lo stato dell'engine
+            sandbox_data["material"] = self._sanitize(resolved_data.get("material", item.material))
+            sandbox_data["status"] = "PRELIMINARY"
+            
+            item.raw_harvested_data = json.dumps(sandbox_data)
+
+            # Aggiorniamo i tag solo se il prodotto è ancora in Draft
+            if item.status == ProductStatus.Draft and not item.tags:
+                item.tags = ", ".join(cleaned_tags)
+
+            db.commit()
+            add_log(f"🧪 [Harvester] Proposte AI salvate nella Sandbox per ID {item.id}. In attesa di revisione umana.")
+            
             item.match_confidence = self.calculate_integrity(item) 
             
             # Se siamo in un batch, lo stato diventa Validating (In attesa di Spotlight)
@@ -501,6 +482,16 @@ class HarvesterEngine:
                 item.status = ProductStatus.Ready
                 
             add_log(f"✅ [Harvester] Successo per ID {item.id}")
+            
+            # Ritorno del dizionario rimosso dal flusso asincrono per non bloccare il batch in caso di chiamate dirette
+            return {
+                "status": "ok",
+                "seo_title": item.seo_title,
+                "ai_description_it": item.ai_description_it,
+                "tags": item.tags,
+                "material": item.material,
+                "dimensions": item.dimensions
+            }
 
         except Exception as e:
             err_msg = str(e)

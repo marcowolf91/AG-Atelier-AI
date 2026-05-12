@@ -315,20 +315,20 @@ async def harvester_batch_apply(request: Request, db: Session = Depends(get_db))
                     use_all = not choices
 
                     if use_all or my_choice.get("seo_title"): 
-                        item.seo_title = my_vals.get("seo_title", raw_data.get("seo_title", item.seo_title))
+                        item.seo_title = my_vals.get("seo_title", raw_data.get("proposed_seo_title", raw_data.get("seo_title", item.seo_title)))
                     if use_all or my_choice.get("material"): 
-                        item.material = my_vals.get("material", raw_data.get("material", item.material))
+                        item.material = my_vals.get("material", raw_data.get("proposed_material", raw_data.get("material", item.material)))
                     if use_all or my_choice.get("dimensions"): 
-                        item.dimensions = my_vals.get("dimensions", raw_data.get("dimensions", item.dimensions))
+                        item.dimensions = my_vals.get("dimensions", raw_data.get("proposed_dimensions", raw_data.get("dimensions", item.dimensions)))
                     if use_all or my_choice.get("ai_description_it"): 
-                        item.ai_description_it = my_vals.get("ai_description_it", raw_data.get("ai_description_it", item.ai_description_it))
+                        item.ai_description_it = my_vals.get("ai_description_it", raw_data.get("proposed_description", raw_data.get("ai_description_it", item.ai_description_it)))
                     
                     if use_all or my_choice.get("tags"):
                         user_tags = my_vals.get("tags")
                         if user_tags is not None:
                             item.tags = user_tags
                         else:
-                            tags_data = raw_data.get("tags", [])
+                            tags_data = raw_data.get("proposed_tags", raw_data.get("tags", []))
                             item.tags = ", ".join(tags_data) if isinstance(tags_data, list) else tags_data
                         
                     item.status = ProductStatus.Ready
