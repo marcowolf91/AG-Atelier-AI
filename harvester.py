@@ -361,27 +361,44 @@ class HarvesterEngine:
             db.query(Product).filter(Product.id.in_(batch_to_process)).update({"is_ai_processing": 1}, synchronize_session=False)
             db.commit()
 
-            # Loop di elaborazione (Sync thread che lancia async)
+            # Loop di elaborazione (Hyper-Batching con asyncio.gather)
             import asyncio
+            import json, os
+            
+            harvester_model = "llama3"
+            if os.path.exists("workspace_config.json"):
+                try:
+                    with open("workspace_config.json", "r") as f:
+                        cnf = json.load(f)
+                        harvester_model = cnf.get("task_assignments", {}).get("harvester", "llama3")
+                except: pass
+                
+            batch_to_run = []
+            
             while ENGINE_STATE["pending_ids"]:
-                # Se abbiamo raggiunto il batch_size o abbiamo finito i prodotti
                 if ENGINE_STATE["processed_count"] >= ENGINE_STATE["batch_size"]:
                     break
-
-                pid = ENGINE_STATE["pending_ids"].pop(0)
-                
-                # Eseguiamo il task asincrono nel thread corrente
-                try:
-                    asyncio.run(self._enrich_single_product(pid))
-                except Exception as ex_coro:
-                    add_log(f"⚠️ Errore nel coroutine engine per ID {pid}: {str(ex_coro)}")
-                
+                batch_to_run.append(ENGINE_STATE["pending_ids"].pop(0))
                 ENGINE_STATE["processed_count"] += 1
                 
-                # Aggiungiamo al batch Spotlight SOLO se non è andato in errore
-                p_check = db.query(Product).filter(Product.id == pid).first()
-                if p_check and p_check.status != ProductStatus.Error:
-                    ENGINE_STATE["current_batch_ids"].append(pid)
+            if batch_to_run:
+                async def process_all(pids):
+                    # db_session=None forza ogni task a crearsi la propria connessione DB isolata,
+                    # permettendo l'elaborazione parallela sicura.
+                    tasks = [self._enrich_single_product(pid, model_choice=harvester_model) for pid in pids]
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Eseguiamo tutti i task in parallelo (simultaneamente)
+                try:
+                    asyncio.run(process_all(batch_to_run))
+                except Exception as ex_coro:
+                    add_log(f"⚠️ Errore critico nel coroutine engine (Hyper-Batch): {str(ex_coro)}")
+                
+                # A fine esecuzione parallela, accodiamo nello Spotlight solo quelli che non sono in Errore
+                for pid in batch_to_run:
+                    p_check = db.query(Product).filter(Product.id == pid).first()
+                    if p_check and p_check.status != ProductStatus.Error:
+                        ENGINE_STATE["current_batch_ids"].append(pid)
                 
             # Alla fine del ciclo (sia per limite batch che per fine coda), chiediamo SEMPRE conferma
             if ENGINE_STATE["current_batch_ids"]:
@@ -410,18 +427,18 @@ class HarvesterEngine:
             query = f"{item.brand} {item.model} luxury product features material size"
             snippets = []
             
-            # 1. Search (Serper)
-            if self.serper_key and not self.serper_key.startswith("***"):
-                headers = {'X-API-KEY': self.serper_key, 'Content-Type': 'application/json'}
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": query})
-                    self.log_api_hit("serper")
-                    if resp.status_code == 200:
-                        snippets = [o['snippet'] for o in resp.json().get('organic', [])]
+            # 1. Search (Serper) - Temporaneamente disattivato per velocizzare il processo
+            # if self.serper_key and not self.serper_key.startswith("***"):
+            #     headers = {'X-API-KEY': self.serper_key, 'Content-Type': 'application/json'}
+            #     async with httpx.AsyncClient(timeout=10.0) as client:
+            #         resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": query})
+            #         self.log_api_hit("serper")
+            #         if resp.status_code == 200:
+            #             snippets = [o['snippet'] for o in resp.json().get('organic', [])]
             
             if not snippets:
-                await asyncio.sleep(1)
-                snippets = [f"Data for {item.brand} {item.model}"]
+                await asyncio.sleep(0.1) # Leggero delay per l'event loop
+                snippets = [f"Dati PIM base per {item.brand} {item.model}"]
 
             combined_text = "\n".join(snippets)
             # Salvataggio provvisorio rimosso per non corrompere la sandbox JSON

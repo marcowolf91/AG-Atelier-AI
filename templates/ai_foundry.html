@@ -70,6 +70,21 @@
                     <button class="btn glass-btn full-w" onclick="pullModel('llama3')" id="btn-llama3">Verifica Livello</button>
                 </div>
 
+                <!-- Card Qwen 2.5 -->
+                <div class="glass-panel model-glass-card">
+                    <div class="mg-top">
+                        <i class="ph-duotone ph-rocket-launch" style="color: #facc15;"></i>
+                        <span id="st-qwen2.5" class="mg-badge">VERIFICA...</span>
+                    </div>
+                    <h3 class="mg-title">Qwen 2.5 (7B)</h3>
+                    <p class="mg-desc">Super veloce e rigoroso nel rispettare formattazioni e regole JSON complesse.</p>
+                    <div class="mg-stats">
+                        <span><i class="ph ph-lightning"></i> HYPER-FAST</span>
+                        <span><i class="ph ph-shield-check"></i> 100% PRIVATE</span>
+                    </div>
+                    <button class="btn glass-btn full-w" onclick="pullModel('qwen2.5')" id="btn-qwen2.5">Verifica Livello</button>
+                </div>
+
                 <!-- Card Mistral -->
                 <div class="glass-panel model-glass-card">
                     <div class="mg-top">
@@ -126,11 +141,25 @@
             <div style="display: flex; flex-direction: column; gap: 16px;">
                 <div class="task-row glass-panel">
                     <div class="tr-info">
+                        <strong>Arricchimento Batch (Harvester Engine)</strong>
+                        <span>Generazione massiva di titoli, tag e strutturazione JSON PIM.</span>
+                    </div>
+                    <select class="glass-input tr-select" data-task="harvester">
+                        <option value="llama3">LLaMA 3 (Creativo/Narrativo)</option>
+                        <option value="qwen2.5">Qwen 2.5 (Hyper-Fast / JSON Preciso)</option>
+                        <option value="mistral">Mistral (Tecnico/Preciso)</option>
+                        <option value="openai">GPT-4o (Standard Industry)</option>
+                    </select>
+                </div>
+
+                <div class="task-row glass-panel">
+                    <div class="tr-info">
                         <strong>Generazione Narrativa (Muse)</strong>
                         <span>Storytelling di lusso e schede prodotto emotive.</span>
                     </div>
                     <select class="glass-input tr-select" data-task="description">
                         <option value="llama3">LLaMA 3 (Creativo/Narrativo)</option>
+                        <option value="qwen2.5">Qwen 2.5 (Creativo / Veloce)</option>
                         <option value="mistral">Mistral (Tecnico/Preciso)</option>
                         <option value="openai">GPT-4o (Standard Industry)</option>
                     </select>
@@ -250,7 +279,7 @@
             const res = await fetch('/api/ollama/status');
             const data = await res.json();
             const currentModels = data.models.map(m => m.name.split(':')[0]); 
-            ['llama3', 'mistral', 'moondream'].forEach(mName => {
+            ['llama3', 'mistral', 'moondream', 'qwen2.5'].forEach(mName => {
                 const badge = document.getElementById(`st-${mName}`);
                 const btn = document.getElementById(`btn-${mName}`);
                 if(!badge || !btn) return;

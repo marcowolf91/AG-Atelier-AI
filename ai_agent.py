@@ -24,7 +24,12 @@ class AIAgent:
                 except: data = {}
         else:
             import ollama_bridge
-            real_model = "llama3:latest" if model_choice == "llama3" else model_choice
+            real_model = model_choice
+            if model_choice == "llama3":
+                real_model = "llama3:latest"
+            elif model_choice == "qwen2.5":
+                real_model = "qwen2.5:7b"
+                
             res = await ollama_bridge.generate_narrative(real_model, prompt)
             data = self.extract_json(res)
             
@@ -131,5 +136,6 @@ class AIAgent:
         3. Genere e Numero: USA SEMPRE IL SINGOLARE (es. "questa borsa", "questo modello", NON "queste borse") a meno che il prodotto non sia intrinsecamente plurale come gli occhiali. Assicurati di usare articoli e aggettivi corretti per {gender_hint}.
         4. Creatività e Originalità: VARIA SEMPRE IL LESSICO E LA STRUTTURA. NON usare MAI frasi fatte o cliché come "sintesi perfetta", "ideale per chi cerca", "must-have", "destinati a diventare". Sii descrittivo, elegante e unico per ogni prodotto. Focalizzati sulle caratteristiche reali e sull'heritage del brand.
         5. Formato: JSON PURO. VIETATO ASSOLUTAMENTE inserire commenti (niente // o /* */), spiegazioni o testo Markdown (niente ```json). Usa solo le doppie virgolette per chiavi e valori stringa.
+        6. Titolo SEO: Il campo 'seo_title' deve contenere ESCLUSIVAMENTE il Brand e il Modello in formato Title Case (es. 'Louis Vuitton Papillon Trunk'). NON aggiungere mai categorie, aggettivi, o parole come 'Borsa', 'Di Lusso', ecc.
         """
         return full_prompt

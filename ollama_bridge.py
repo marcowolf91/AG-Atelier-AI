@@ -60,7 +60,9 @@ async def uninstall_local_model(model_name: str):
 
 async def generate_narrative(model: str, prompt: str):
     """Genera testo usando un modello locale installato."""
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # Timeout aumentato a 300s per permettere ad Ollama di smaltire la coda
+    # interna quando riceve 5 task in contemporanea (Hyper-Batching).
+    async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             response = await client.post(f"{OLLAMA_HOST}/api/generate", json={
                 "model": model,
