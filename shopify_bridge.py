@@ -39,9 +39,45 @@ class ShopifyBridge:
             except Exception as e: return False, str(e)
 
     async def sync_catalog_with_shopify(self):
-        """Recupero catalogo Shopify + Merge con i prodotti locali 'Ready'."""
-        results = []
-        # 1. Recupero prodotti reali da Shopify
+        """Recupero catalogo Shopify + Merge (Priorità ai locali 'Ready')."""
+        local_results = []
+        shopify_results = []
+        
+        # 1. Recupero prodotti locali pronti (Priorità a quelli CON FOTO)
+        db = SessionLocal()
+        try:
+            ready_items = db.query(Product).filter(Product.status == ProductStatus.Ready).all()
+            for p in ready_items:
+                sku = p.sku or f"SKU-{p.id}"
+                img = None
+                has_images = False
+                if p.matched_images_json:
+                    try:
+                        imgs = json.loads(p.matched_images_json)
+                        if imgs: 
+                            img = f"/api/drive/proxy/{imgs[0]}"
+                            has_images = True
+                    except: pass
+
+                local_results.append({
+                    "id": f"gid://shopify/Product/Local-{p.id}",
+                    "title": p.seo_title or f"{p.brand} {p.model}",
+                    "sku": sku,
+                    "price": str(p.price) if p.price else "0.00",
+                    "status": "LOCAL ONLY",
+                    "image": img,
+                    "inventory": 1,
+                    "product_type": p.category or "Scarpe",
+                    "is_local_published": False,
+                    "has_images": has_images # Indicatore per il frontend
+                })
+            
+            # Ordiniamo local_results: prima quelli con foto (has_images=True)
+            local_results.sort(key=lambda x: x["has_images"], reverse=True)
+            
+        finally: db.close()
+
+        # 2. Recupero prodotti reali da Shopify
         if self.token and self.api_url:
             query = """
             query {
@@ -59,14 +95,17 @@ class ShopifyBridge:
             headers = {"X-Shopify-Access-Token": self.token, "Content-Type": "application/json"}
             async with httpx.AsyncClient(timeout=20.0) as client:
                 try:
-                    resp = await client.post(self.api_url, json={"query": query}, headers=headers)
+                    resp = await client.post(self.api_url, headers=headers, json={"query": query})
                     if resp.status_code == 200:
                         edges = resp.json().get("data", {}).get("products", {}).get("edges", [])
+                        existing_skus = {lr["sku"] for lr in local_results}
                         for edge in edges:
                             node = edge["node"]
                             v = node["variants"]["edges"][0]["node"] if node["variants"]["edges"] else {"sku": "N/A", "price": "0.00"}
+                            if v["sku"] in existing_skus: continue # Evita duplicati se già nei locali
+                            
                             img = node["images"]["edges"][0]["node"]["url"] if node["images"]["edges"] else None
-                            results.append({
+                            shopify_results.append({
                                 "id": node["id"], "title": node["title"], "sku": v["sku"],
                                 "price": v["price"], "status": node["status"], "image": img,
                                 "inventory": node["totalInventory"], "product_type": node["productType"] or "Scarpe",
@@ -74,35 +113,7 @@ class ShopifyBridge:
                             })
                 except: pass
 
-        # 2. Aggiunta prodotti locali pronti per la pubblicazione
-        db = SessionLocal()
-        try:
-            existing_skus = {r["sku"] for r in results if r.get("sku")}
-            ready_items = db.query(Product).filter(Product.status == ProductStatus.Ready).all()
-            for p in ready_items:
-                sku = p.sku or f"SKU-{p.id}"
-                if sku in existing_skus: continue
-                
-                img = None
-                if p.matched_images_json:
-                    try:
-                        imgs = json.loads(p.matched_images_json)
-                        if imgs: img = f"/api/drive/proxy/{imgs[0]}"
-                    except: pass
-
-                results.append({
-                    "id": f"gid://shopify/Product/Local-{p.id}",
-                    "title": p.seo_title or f"{p.brand} {p.model}",
-                    "sku": sku,
-                    "price": str(p.price) if p.price else "0.00",
-                    "status": "LOCAL ONLY",
-                    "image": img,
-                    "inventory": 1,
-                    "product_type": p.category or "Scarpe",
-                    "is_local_published": False
-                })
-        finally: db.close()
-        return results
+        return local_results + shopify_results
 
     async def publish_product_to_shopify(self, sku: str) -> bool:
         """
