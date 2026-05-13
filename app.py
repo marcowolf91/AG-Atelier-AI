@@ -343,10 +343,11 @@ async def harvester_batch_apply(request: Request, db: Session = Depends(get_db))
         ENGINE_STATE["current_batch_ids"] = []
         ENGINE_STATE["processed_count"] = 0
         
-        if not ENGINE_STATE["pending_ids"]:
-            ENGINE_STATE["status"] = "FINISHED"
-        else:
-            ENGINE_STATE["status"] = "IDLE" # Pronto per il prossimo batch
+        if ENGINE_STATE["status"] != "RUNNING":
+            if not ENGINE_STATE["pending_ids"]:
+                ENGINE_STATE["status"] = "FINISHED"
+            else:
+                ENGINE_STATE["status"] = "IDLE" # Pronto per il prossimo batch
             
         return {"status": "ok", "message": f"Dati certificati per {len(products)} prodotti."}
     except Exception as e:
@@ -1521,6 +1522,11 @@ async def harvester_confirm(request: Request, db: Session = Depends(get_db)):
         # Dopo la conferma manuale, il prodotto è PRONTO
         item.status = ProductStatus.Ready
         db.commit()
+        
+        from harvester_state import ENGINE_STATE
+        if pid in ENGINE_STATE.get("current_batch_ids", []):
+            ENGINE_STATE["current_batch_ids"].remove(pid)
+            
     return {"status": "ok"}
 
 @app.get("/api/harvester/logs")
@@ -3070,7 +3076,8 @@ def get_product_data(pid: int, db: Session = Depends(get_db)):
             "fit": item.fit or "",
             "condition_grade": item.condition_grade or "",
             "accessories_included": item.accessories_included or "",
-            "dimensions": item.dimensions or ""
+            "dimensions": item.dimensions or "",
+            "raw_harvested_data": item.raw_harvested_data or ""
         }
     except Exception as e:
         add_log(f"💥 [API Error] Recupero Prodotto #{pid}: {str(e)}")

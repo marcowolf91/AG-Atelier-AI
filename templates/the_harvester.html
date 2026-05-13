@@ -107,6 +107,16 @@
                                 <i class="ph-bold ph-warning-circle"></i> 
                                 <span style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.last_ai_error or 'Errore Arricchimento' }}</span>
                             </div>
+                        {% elif p.preliminary_data and p.preliminary_data.get('status') == 'PRELIMINARY' %}
+                            <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                <i class="ph-fill ph-hourglass-high" style="color: var(--accent-gold);"></i>
+                                <span style="font-weight: 700; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    {{ p.preliminary_data.get('proposed_seo_title', p.preliminary_data.get('seo_title', '')) }}
+                                </span>
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); max-width: 250px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; padding-left: 20px;">
+                                {{ p.preliminary_data.get('proposed_description', p.preliminary_data.get('ai_description_it', '')) }}
+                            </div>
                         {% else %}
                             <div style="display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.2);">
                                 <i class="ph ph-circle-dashed" style="font-size: 1rem;"></i>
@@ -445,21 +455,38 @@
             }
 
             if(engineStatus === 'RUNNING') {
-                if(engineBar) engineBar.style.display = 'flex';
-                if(taskText) taskText.innerText = `Lavorazione in corso...`;
+                if(engineBar) {
+                    engineBar.style.display = 'flex';
+                    if(currentBatchIds.length > 0) {
+                        engineBar.style.cursor = 'pointer';
+                        engineBar.onclick = showBatchSpotlight;
+                        if(taskText) taskText.innerHTML = `Lavorazione in corso in background... <strong style="color:var(--accent-gold);">Clicca per validare i primi ${currentBatchIds.length} pronti!</strong>`;
+                    } else {
+                        engineBar.style.cursor = 'default';
+                        engineBar.onclick = null;
+                        if(taskText) taskText.innerText = `Lavorazione in corso in background...`;
+                    }
+                }
             } else if(engineStatus === 'WAITING_FOR_CONFIRMATION') {
-                const spotlightModal = document.getElementById('batch-spotlight-modal');
-                if(spotlightModal && spotlightModal.style.display === 'none' && !isModalOpen) {
-                    showBatchSpotlight();
+                if(engineBar) {
+                    engineBar.style.display = 'flex';
+                    engineBar.style.cursor = 'pointer';
+                    engineBar.onclick = showBatchSpotlight;
                 }
-                if(engineBar) engineBar.style.display = 'none';
-            } else if(engineStatus === 'IDLE' || engineStatus === 'FINISHED') {
-                if(engineBar) engineBar.style.display = 'none';
+                if(taskText) {
+                    taskText.innerHTML = `Lavorazione Completata. <strong style="color:var(--accent-gold);">Clicca qui per aprire lo Spotlight</strong> e certificare ${currentBatchIds.length} prodotti.`;
+                }
                 if(progressContainer) progressContainer.style.display = 'none';
-                const spotlightModal = document.getElementById('batch-spotlight-modal');
-                if(!spotlightModal || spotlightModal.style.display === 'none') {
-                    isModalOpen = false;
+                if(batchInfo) batchInfo.style.display = 'none';
+            } else if(engineStatus === 'IDLE' || engineStatus === 'FINISHED') {
+                if(engineBar) {
+                    engineBar.style.display = 'none';
+                    engineBar.onclick = null;
+                    engineBar.style.cursor = 'default';
                 }
+                if(progressContainer) progressContainer.style.display = 'none';
+                if(batchInfo) batchInfo.style.display = 'block'; // reset
+                isModalOpen = false;
             }
 
             document.querySelectorAll('.harvester-row').forEach(row => {

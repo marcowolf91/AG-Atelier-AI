@@ -176,15 +176,15 @@
                     const map = {
                         'edit-brand': p.brand,
                         'edit-model': p.model,
-                        'edit-size': p.size || p.dimensions || proposals.dimensions,
-                        'edit-fit': p.fit || proposals.fit,
-                        'edit-condition': p.condition_grade || proposals.condition_grade,
-                        'edit-accessories': p.accessories_included || proposals.accessories_included,
+                        'edit-size': p.size || p.dimensions || proposals.dimensions || proposals.proposed_dimensions,
+                        'edit-fit': p.fit || proposals.fit || proposals.proposed_fit,
+                        'edit-condition': p.condition_grade || proposals.condition_grade || proposals.proposed_condition_grade,
+                        'edit-accessories': p.accessories_included || proposals.accessories_included || proposals.proposed_accessories_included,
                         'edit-price': p.price,
-                        'edit-tags': p.tags || (Array.isArray(proposals.proposed_tags) ? proposals.proposed_tags.join(', ') : proposals.proposed_tags),
-                        'edit-seo-title': p.seo_title || proposals.proposed_seo_title,
-                        'edit-description': p.ai_description_it || proposals.proposed_description,
-                        'edit-type': p.category || proposals.product_type
+                        'edit-tags': p.tags || (Array.isArray(proposals.proposed_tags) ? proposals.proposed_tags.join(', ') : (proposals.proposed_tags || proposals.tags)),
+                        'edit-seo-title': p.seo_title || proposals.proposed_seo_title || proposals.seo_title,
+                        'edit-description': p.ai_description_it || proposals.proposed_description || proposals.ai_description_it,
+                        'edit-type': p.category || proposals.product_type || proposals.category
                     };
 
                     Object.entries(map).forEach(([id, val]) => {

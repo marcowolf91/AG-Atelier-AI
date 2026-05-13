@@ -367,22 +367,25 @@ class ShopifyBridge:
             if errors:
                 return {"status": "error", "message": errors[0]["message"]}
                 
+            product_data = create_result.get("product", {})
+            product_id = product_data["id"]
+            
             # STEP 2: Update the Default Variant with SKU and Price
             try:
-                product_data = create_result.get("product", {})
-                product_id = product_data["id"]
+                # Piccolo delay per permettere l'indicizzazione
+                await asyncio.sleep(1.5)
+                
                 variant_id = product_data["variants"]["edges"][0]["node"]["id"]
+                formatted_price = f"{float(p.price):.2f}" if p.price else "0.00"
                 
                 mutation_variant = """
                 mutation productVariantUpdate($input: ProductVariantInput!) {
                   productVariantUpdate(input: $input) {
                     productVariant {
                       id
+                      price
                     }
-                    userErrors {
-                      field
-                      message
-                    }
+                    userErrors { field message }
                   }
                 }
                 """
@@ -390,7 +393,7 @@ class ShopifyBridge:
                 variables_variant = {
                     "input": {
                         "id": variant_id,
-                        "price": price,
+                        "price": formatted_price,
                         "sku": p.sku or sku
                     }
                 }
@@ -403,61 +406,96 @@ class ShopifyBridge:
                     )
                     res_var = resp2.json()
                     
-                    var_errs = res_var.get("data", {}).get("productVariantUpdate", {}).get("userErrors", [])
+                    var_data = res_var.get("data", {}).get("productVariantUpdate", {})
+                    var_errs = var_data.get("userErrors", [])
+                    
                     if var_errs:
-                        add_bridge_log(f"⚠️ Errore aggiornamento Prezzo/SKU per {sku}: {var_errs[0]['message']}")
-                        return {"status": "error", "message": f"Prezzo non aggiornato: {var_errs[0]['message']}"}
+                        add_bridge_log(f"⚠️ Errore variante per {sku}: {var_errs[0]['message']}")
+                    else:
+                        updated_p = var_data.get("productVariant", {}).get("price")
+                        add_bridge_log(f"✅ Prezzo aggiornato a {updated_p} per {sku}")
                         
             except Exception as variant_err:
-                add_bridge_log(f"⚠️ Eccezione durante l'aggiornamento variante per {sku}: {str(variant_err)}")
+                add_bridge_log(f"⚠️ Eccezione variante per {sku}: {str(variant_err)}")
                 
-            # STEP 3: Handle Image Upload if available
+            # STEP 3: Handle Image Upload via STAGED UPLOADS (Physical-like flow)
             try:
                 if p.matched_images_json:
                     imgs = json.loads(p.matched_images_json)
                     if imgs and len(imgs) > 0:
                         drive_file_id = imgs[0]
+                        add_bridge_log(f"📸 Inizio caricamento fisico immagine {drive_file_id}...")
                         
-                        # Use a public Google Drive redirect link
-                        public_img_url = f"https://drive.google.com/uc?export=download&id={drive_file_id}"
+                        # 3a. Download locale da Drive
+                        temp_path = f"temp_img_{drive_file_id}.jpg"
+                        drive_url = f"https://drive.google.com/uc?export=download&id={drive_file_id}"
                         
-                        mutation_media = """
-                        mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
-                          productCreateMedia(media: $media, productId: $productId) {
-                            media {
-                              mediaContentType
-                              status
+                        async with httpx.AsyncClient(follow_redirects=True) as dl_client:
+                            dl_resp = await dl_client.get(drive_url)
+                            if dl_resp.status_code == 200:
+                                with open(temp_path, "wb") as f:
+                                    f.write(dl_resp.content)
+                            else:
+                                raise Exception(f"Download Drive fallito: {dl_resp.status_code}")
+
+                        # 3b. Richiesta Staged Target a Shopify
+                        staged_mutation = """
+                        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+                          stagedUploadsCreate(input: $input) {
+                            stagedTargets {
+                              url
+                              resourceUrl
+                              parameters { name value }
                             }
-                            mediaUserErrors {
-                              field
-                              message
-                            }
+                            userErrors { field message }
                           }
                         }
                         """
                         
-                        variables_media = {
-                            "productId": product_id,
-                            "media": [
-                                {
-                                    "originalSource": public_img_url,
-                                    "mediaContentType": "IMAGE"
-                                }
-                            ]
-                        }
+                        staged_input = [{
+                            "filename": f"product_{p.id}.jpg",
+                            "mimeType": "image/jpeg",
+                            "resource": "PRODUCT_IMAGE",
+                            "httpMethod": "POST"
+                        }]
                         
-                        async with httpx.AsyncClient(timeout=30.0) as client:
-                            resp3 = await client.post(
-                                self.api_url, 
-                                headers=headers, 
-                                json={"query": mutation_media, "variables": variables_media}
-                            )
-                            res_media = resp3.json()
-                            media_errs = res_media.get("data", {}).get("productCreateMedia", {}).get("mediaUserErrors", [])
-                            if media_errs:
-                                add_bridge_log(f"⚠️ Immagine Shopify respinta: {media_errs[0]['message']}")
+                        async with httpx.AsyncClient() as client:
+                            s_resp = await client.post(self.api_url, headers=headers, json={"query": staged_mutation, "variables": {"input": staged_input}})
+                            s_data = s_resp.json()
+                            target = s_data["data"]["stagedUploadsCreate"]["stagedTargets"][0]
+                            
+                            # 3c. Upload fisico a Shopify (GCS/S3)
+                            upload_url = target["url"]
+                            params = {p["name"]: p["value"] for p in target["parameters"]}
+                            
+                            with open(temp_path, "rb") as f:
+                                files = {"file": f}
+                                up_resp = await client.post(upload_url, data=params, files=files)
+                                
+                            if up_resp.status_code in [200, 201]:
+                                # 3d. Creazione Media finale su Shopify
+                                final_resource_url = target["resourceUrl"]
+                                media_mutation = """
+                                mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+                                  productCreateMedia(media: $media, productId: $productId) {
+                                    mediaUserErrors { message }
+                                  }
+                                }
+                                """
+                                await client.post(self.api_url, headers=headers, json={
+                                    "query": media_mutation, 
+                                    "variables": {
+                                        "productId": product_id,
+                                        "media": [{"originalSource": final_resource_url, "alt": title, "mediaContentType": "IMAGE"}]
+                                    }
+                                })
+                                add_bridge_log(f"✅ Immagine caricata fisicamente per {sku}")
+                            
+                        # Pulizia file temporaneo
+                        if os.path.exists(temp_path): os.remove(temp_path)
+                        
             except Exception as img_err:
-                add_bridge_log(f"⚠️ Impossibile caricare immagine per {sku}: {str(img_err)}")
+                add_bridge_log(f"⚠️ Errore caricamento fisico immagine: {str(img_err)}")
                 
             # Aggiorniamo lo stato nel PIM locale
             p.status = ProductStatus.Published

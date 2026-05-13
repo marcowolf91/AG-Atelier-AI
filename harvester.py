@@ -361,7 +361,7 @@ class HarvesterEngine:
             db.query(Product).filter(Product.id.in_(batch_to_process)).update({"is_ai_processing": 1}, synchronize_session=False)
             db.commit()
 
-            # Loop di elaborazione (Hyper-Batching con asyncio.gather)
+            # Loop di elaborazione (Hyper-Batching Continuo in Background)
             import asyncio
             import json, os
             
@@ -373,37 +373,60 @@ class HarvesterEngine:
                         harvester_model = cnf.get("task_assignments", {}).get("harvester", "llama3")
                 except: pass
                 
-            batch_to_run = []
-            
+            # Finché ci sono prodotti nella coda, continuiamo a prelevare sottomultipli (batch_size)
             while ENGINE_STATE["pending_ids"]:
-                if ENGINE_STATE["processed_count"] >= ENGINE_STATE["batch_size"]:
-                    break
-                batch_to_run.append(ENGINE_STATE["pending_ids"].pop(0))
-                ENGINE_STATE["processed_count"] += 1
+                batch_to_run = []
                 
-            if batch_to_run:
-                async def process_all(pids):
-                    # db_session=None forza ogni task a crearsi la propria connessione DB isolata,
-                    # permettendo l'elaborazione parallela sicura.
-                    tasks = [self._enrich_single_product(pid, model_choice=harvester_model) for pid in pids]
-                    await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Eseguiamo tutti i task in parallelo (simultaneamente)
-                try:
-                    asyncio.run(process_all(batch_to_run))
-                except Exception as ex_coro:
-                    add_log(f"⚠️ Errore critico nel coroutine engine (Hyper-Batch): {str(ex_coro)}")
-                
-                # A fine esecuzione parallela, accodiamo nello Spotlight solo quelli che non sono in Errore
-                for pid in batch_to_run:
-                    p_check = db.query(Product).filter(Product.id == pid).first()
-                    if p_check and p_check.status != ProductStatus.Error:
-                        ENGINE_STATE["current_batch_ids"].append(pid)
-                
-            # Alla fine del ciclo (sia per limite batch che per fine coda), chiediamo SEMPRE conferma
+                # Estraiamo un massimo di 'batch_size' prodotti (es. 5 alla volta per non saturare la memoria)
+                for _ in range(ENGINE_STATE["batch_size"]):
+                    if ENGINE_STATE["pending_ids"]:
+                        batch_to_run.append(ENGINE_STATE["pending_ids"].pop(0))
+                        ENGINE_STATE["processed_count"] += 1
+                        
+                if batch_to_run:
+                    actual_to_process = []
+                    already_ready = []
+                    
+                    for pid in batch_to_run:
+                        p_check = db.query(Product).filter(Product.id == pid).first()
+                        if p_check and p_check.raw_harvested_data:
+                            try:
+                                js = json.loads(p_check.raw_harvested_data)
+                                if js.get("status") == "PRELIMINARY":
+                                    already_ready.append(pid)
+                                    continue
+                            except: pass
+                        actual_to_process.append(pid)
+
+                    if actual_to_process:
+                        # Marcatura immediata del micro-batch corrente per la UI (mostra GENERATING...)
+                        db.query(Product).filter(Product.id.in_(actual_to_process)).update({"is_ai_processing": 1}, synchronize_session=False)
+                        db.commit()
+                        
+                        async def process_all(pids):
+                            # Ripristinato Hyper-Batching: lanciamo tutti i task in parallelo 
+                            # sfruttando il timeout a 300s di Ollama per fargli gestire la coda
+                            tasks = [self._enrich_single_product(pid, model_choice=harvester_model) for pid in pids]
+                            await asyncio.gather(*tasks, return_exceptions=True)
+                        
+                        try:
+                            asyncio.run(process_all(actual_to_process))
+                        except Exception as ex_coro:
+                            add_log(f"⚠️ Errore critico nel coroutine engine (Hyper-Batch): {str(ex_coro)}")
+                            
+                    if already_ready:
+                        PROCESS_PROGRESS["completed"] += len(already_ready)
+                    
+                    # A fine esecuzione parallela del micro-batch, accodiamo nello Spotlight tutti i prodotti (sia quelli appena processati che quelli skippati)
+                    for pid in batch_to_run:
+                        p_check = db.query(Product).filter(Product.id == pid).first()
+                        if p_check and p_check.status != ProductStatus.Error:
+                            ENGINE_STATE["current_batch_ids"].append(pid)
+                            
+            # Solo alla fine dell'intera coda, ci fermiamo e aspettiamo la revisione utente
             if ENGINE_STATE["current_batch_ids"]:
                 ENGINE_STATE["status"] = "WAITING_FOR_CONFIRMATION"
-                add_log("⏸️ [Engine] Fase di Arricchimento completata. In attesa di Certificazione Spotlight.")
+                add_log("⏸️ [Engine] Fase di Arricchimento completata per l'intera selezione. In attesa di Certificazione Spotlight.")
             else:
                 ENGINE_STATE["status"] = "FINISHED"
                 add_log("🏁 [Engine] Coda terminata. Nessun dato nuovo da certificare.")

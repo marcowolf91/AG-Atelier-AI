@@ -97,6 +97,16 @@ class Product(Base):
     has_master_conflict = Column(Integer, default=0) # 0=Synced, 1=Conflict detected
     master_snapshot_json = Column(Text, nullable=True) # Last known clean values from Sheet
     
+    @property
+    def preliminary_data(self):
+        if self.raw_harvested_data:
+            import json
+            try:
+                return json.loads(self.raw_harvested_data)
+            except:
+                pass
+        return {}
+        
     # Governance Link
     governance_category_id = Column(Integer, nullable=True, index=True)
 
