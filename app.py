@@ -536,6 +536,10 @@ async def api_convert_image(request: Request):
         print(f"❌ Conversion Error ({file_id}): {e}")
         return {"status": "error", "message": str(e)}
 
+@app.get("/the-darkroom/board")
+def get_darkroom_board(request: Request):
+    return templates.TemplateResponse(request=request, name="the_darkroom_board.html", context={})
+
 @app.get("/the-darkroom")
 def the_darkroom(request: Request, db: Session = Depends(get_db)):
     status, all_go = get_system_status()
@@ -546,6 +550,155 @@ def the_darkroom(request: Request, db: Session = Depends(get_db)):
         "all_systems_go": all_go
     }
     return templates.TemplateResponse(request=request, name="the_darkroom.html", context=context)
+
+import imagehash
+from PIL import Image
+import io
+
+def get_visual_hash(file_id, drive_service):
+    """Genera un perceptual hash per un'immagine su Drive."""
+    try:
+        content = drive_service.files().get_media(fileId=file_id).execute()
+        img = Image.open(io.BytesIO(content))
+        # Usiamo pHash per somiglianza visiva robusta
+        return str(imagehash.phash(img))
+    except Exception as e:
+        print(f"Hash Error for {file_id}: {e}")
+        return None
+
+def cluster_images(files):
+    """Raggruppa le immagini in base all'orario di creazione (delta < 1 min)."""
+    if not files: return []
+    sorted_files = sorted(files, key=lambda x: x.get('createdTime', ''), reverse=True)
+    clusters = []
+    current_cluster = []
+    import datetime
+    for i, f in enumerate(sorted_files):
+        if not current_cluster:
+            current_cluster.append(f)
+            continue
+        last_f = current_cluster[-1]
+        try:
+            t_current = datetime.datetime.fromisoformat(f['createdTime'].replace('Z', '+00:00'))
+            t_last = datetime.datetime.fromisoformat(last_f['createdTime'].replace('Z', '+00:00'))
+            diff = abs((t_last - t_current).total_seconds())
+            if diff < 60: # 1 minuto
+                current_cluster.append(f)
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [f]
+        except:
+            clusters.append(current_cluster)
+            current_cluster = [f]
+    if current_cluster:
+        clusters.append(current_cluster)
+    return clusters
+
+def save_darkroom_cache(raw_files):
+    """Salva la cache dei file includendo gli hash visivi."""
+    try:
+        with open(DARKROOM_CACHE_FILE, 'w') as f:
+            json.dump({"timestamp": time.time(), "raw_files": raw_files}, f)
+    except Exception as e:
+        print(f"Error saving cache: {e}")
+
+@app.get("/api/darkroom/scan-progress")
+def get_scan_progress(db: Session = Depends(get_db)):
+    """Restituisce quante immagini hanno già un hash visivo."""
+    all_files = get_darkroom_images(refresh=False, db=db)
+    hashed_count = sum(1 for f in all_files if f.get('visual_hash'))
+    return {
+        "total": len(all_files),
+        "hashed": hashed_count,
+        "percent": (hashed_count / len(all_files) * 100) if all_files else 0
+    }
+
+@app.post("/api/darkroom/start-scan")
+async def start_visual_scan(batch_size: int = 50, db: Session = Depends(get_db)):
+    """Avvia una sessione di hashing visivo per le immagini mancanti."""
+    all_files = get_darkroom_images(refresh=False, db=db)
+    
+    creds = google_auth.get_credentials()
+    from googleapiclient.discovery import build
+    drive_service = build('drive', 'v3', credentials=creds)
+    
+    count = 0
+    modified = False
+    for f in all_files:
+        if not f.get('visual_hash'):
+            h = get_visual_hash(f['id'], drive_service)
+            if h:
+                f['visual_hash'] = h
+                count += 1
+                modified = True
+            if count >= batch_size: break
+            
+    if modified:
+        save_darkroom_cache(all_files)
+        
+    return {"processed": count, "remaining": sum(1 for f in all_files if not f.get('visual_hash'))}
+
+def cluster_images_visual(files):
+    """Raggruppa le immagini in base alla somiglianza visiva (pHash)."""
+    if not files: return []
+    import imagehash
+    
+    hash_map = {} # hash -> [files]
+    for f in files:
+        h = f.get('visual_hash', 'unknown')
+        if h == 'unknown':
+            # Se non ha hash, lo mettiamo in un gruppo temporaneo per orario
+            continue
+            
+        found = False
+        for master_h in hash_map.keys():
+            if master_h != "unknown":
+                dist = imagehash.hex_to_hash(h) - imagehash.hex_to_hash(master_h)
+                if dist < 10: 
+                    hash_map[master_h].append(f)
+                    found = True
+                    break
+        if not found: hash_map[h] = [f]
+        
+    # Gestiamo i file senza hash raggruppandoli per tempo come fallback
+    unknowns = [f for f in files if not f.get('visual_hash')]
+    if unknowns:
+        temp_clusters = cluster_images(unknowns)
+        return list(hash_map.values()) + temp_clusters
+        
+    return list(hash_map.values())
+
+@app.get("/api/darkroom/batches")
+async def get_darkroom_batches(refresh: bool = False, db: Session = Depends(get_db)):
+    """Restituisce le immagini raggruppate con logica VISIVA (Fase 1 reale)."""
+    all_files = get_darkroom_images(refresh=refresh, db=db)
+    
+    # Filtro associati
+    results = db.execute(text("SELECT matched_images_json FROM products WHERE matched_images_json IS NOT NULL AND matched_images_json != '' AND matched_images_json != '[]'")).all()
+    taken_ids = set()
+    for row in results:
+        try:
+            p_ids = json.loads(row[0])
+            if isinstance(p_ids, list):
+                for pid in p_ids: taken_ids.add(str(pid))
+        except: continue
+    
+    free_files = [f for f in all_files if str(f['id']) not in taken_ids]
+    
+    # Clustering Visivo
+    batches = cluster_images_visual(free_files)
+    
+    formatted_batches = []
+    for i, b in enumerate(batches):
+        formatted_batches.append({
+            "id": f"batch_{i}",
+            "count": len(b),
+            "timestamp": b[0].get('createdTime'),
+            "images": b,
+            "leader": b[0]
+        })
+        
+    return formatted_batches
 
 @app.get("/drive-test")
 def drive_test_page(request: Request):
@@ -627,57 +780,134 @@ def get_darkroom_images(refresh: bool = False, db: Session = Depends(get_db)):
             print("⚠️ Nessuna cartella trovata per la scansione.")
             return []
             
-        folder_filter = " or ".join([f"'{fid}' in parents" for fid in all_target_folders[:100]])
-        q = f"({folder_filter}) and (mimeType contains 'image/' or name contains '.heic' or name contains '.HEIC' or name contains '.png' or name contains '.PNG' or name contains '.jpg' or name contains '.jpeg') and mimeType != 'application/vnd.google-apps.folder' and trashed = false"
-        
-        with open("scratch/drive_debug.log", "a") as log_f:
-            log_f.write(f"Total Folders Scanned: {len(all_target_folders)}\n")
-            log_f.write(f"Query: {q}\n")
-        
         try:
+            # PRE-MAPPING CARTELLE: Recuperiamo TUTTE le cartelle del progetto
+            folder_meta = {}
             page_token = None
             while True:
+                f_res = drive_service.files().list(
+                    q="mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                    fields="nextPageToken, files(id, name, parents)",
+                    pageSize=1000,
+                    supportsAllDrives=True,
+                    pageToken=page_token
+                ).execute()
+                for f in f_res.get('files', []):
+                    folder_meta[f['id']] = {'name': f['name'], 'parents': f.get('parents', [])}
+                page_token = f_res.get('nextPageToken')
+                if not page_token: break
+            
+            # Carichiamo gli ID radice dal config per fermare la risalita
+            with open(CONFIG_FILE, 'r') as f:
+                conf = json.load(f)
+            project_roots = [conf.get("folder_id"), conf.get("folder_out_id")]
+            
+            # Funzione per verificare se una cartella appartiene al progetto
+            def is_in_project(fid):
+                if not fid: return False
+                if fid in project_roots: return True
+                meta = folder_meta.get(fid)
+                if not meta: return False
+                p_id = meta['parents'][0] if meta['parents'] else None
+                return is_in_project(p_id)
+
+            path_cache = {}
+            def get_full_path(fid):
+                if not fid or fid in project_roots: return ""
+                if fid in path_cache: return path_cache[fid]
+                meta = folder_meta.get(fid)
+                if not meta: return ""
+                name = meta['name']
+                p_id = meta['parents'][0] if meta['parents'] else None
+                if not p_id or p_id in project_roots:
+                    path_cache[fid] = name
+                    return name
+                parent_path = get_full_path(p_id)
+                full = f"{parent_path} > {name}" if parent_path else name
+                path_cache[fid] = full
+                return full
+
+            # SCANSIONE ASSETS: Prendiamo tutte le immagini a cui abbiamo accesso
+            # e filtriamo in memoria quelle che appartengono alle nostre cartelle radice
+            page_token = None
+            all_drive_files = []
+            while True:
                 res = drive_service.files().list(
-                    q=q, 
-                    fields="nextPageToken, files(id, name, mimeType, size, thumbnailLink, createdTime, description)", 
+                    q="mimeType contains 'image/' and trashed = false", 
+                    fields="nextPageToken, files(id, name, mimeType, size, thumbnailLink, createdTime, description, parents)", 
                     pageSize=1000, 
                     pageToken=page_token,
                     orderBy="createdTime desc",
                     supportsAllDrives=True
                 ).execute()
-                all_files.extend(res.get("files", []))
+                
+                batch = res.get("files", [])
+                for f in batch:
+                    if f.get('parents'):
+                        p_id = f['parents'][0]
+                        if is_in_project(p_id):
+                            full_p = get_full_path(p_id) or "Root"
+                            f['parent_name'] = full_p
+                            f['folder_context'] = full_p.upper()
+                            all_drive_files.append(f)
+                
                 page_token = res.get("nextPageToken")
                 if not page_token: break
             
+            all_files = all_drive_files
+            
             with open("scratch/drive_debug.log", "a") as log_f:
                 log_f.write(f"Assets found: {len(all_files)}\n")
+            
+            # FILTRO INTELLIGENTE: Se esiste un JPG e un HEIC/PNG con lo stesso nome per lo STESSO ID (raro) o stessa logica di sviluppo
+            # Non dobbiamo collassare file diversi con lo stesso nome (es. più foto della stessa riga)
+            file_map = {} 
+            
+            # Ordiniamo per estensione in modo che i JPG abbiano la precedenza se abbiamo duplicati HEIC/JPG dello stesso scatto
+            # Usiamo una combinazione di nome base + dimensione o altro per distinguere scatti diversi
+            sorted_files = sorted(all_files, key=lambda x: (1 if x['name'].lower().endswith(('.jpg', '.jpeg')) else 2))
+            
+            final_files = []
+            seen_bases = {} # base_name -> list of ids
+            
+            for f_obj in sorted_files:
+                raw_name = f_obj['name'].rsplit('.', 1)[0]
+                base = raw_name.lower().strip()
+                ext = f_obj['name'].rsplit('.', 1)[-1].lower()
                 
-            with open(DARKROOM_CACHE_FILE, 'w') as f:
-                # FILTRO INTELLIGENTE: Se esiste un JPG e un HEIC/PNG con lo stesso nome, teniamo solo il JPG
-                file_map = {} # normalized_base -> file_obj
+                # Se è un HEIC/PNG e abbiamo già un JPG con lo stesso nome NELLA STESSA CARTELLA, scartiamo
+                # Altrimenti lo teniamo come scatto unico
+                is_duplicate = False
+                if ext in ['heic', 'png', 'heif']:
+                    for existing in final_files:
+                        if existing['name'].rsplit('.', 1)[0].lower().strip() == base and \
+                           existing.get('parent_name') == f_obj.get('parent_name') and \
+                           existing['name'].lower().endswith(('.jpg', '.jpeg')):
+                            is_duplicate = True
+                            break
                 
-                # Ordiniamo per estensione in modo che i JPG abbiano la precedenza nella mappa
-                sorted_files = sorted(all_files, key=lambda x: (1 if x['name'].lower().endswith(('.jpg', '.jpeg')) else 2))
-                
-                for f_obj in sorted_files:
-                    # Normalizziamo il nome base (senza estensione, minuscolo e senza spazi)
-                    raw_name = f_obj['name'].rsplit('.', 1)[0]
-                    base = raw_name.lower().strip()
-                    
-                    if base not in file_map:
-                        file_map[base] = f_obj
-                    else:
-                        # Se abbiamo già un file con questo nome base, scartiamo l'originale
-                        if f_obj['name'].lower().endswith(('.heic', '.png')):
-                            continue 
-                
-                final_files = list(file_map.values())
-                
-                json.dump({
-                    "raw_files": final_files,
-                    "timestamp": now_ts
-                }, f)
-                all_files = final_files 
+                if not is_duplicate:
+                    final_files.append(f_obj)
+            
+            # ORDINAMENTO: Alfabetico per nome, così i numeri appaiono in ordine
+            final_files.sort(key=lambda x: x['name'].lower())
+            
+            # MERGE: Preserviamo gli hash esistenti se presenti nella vecchia cache
+            try:
+                if os.path.exists(DARKROOM_CACHE_FILE):
+                    with open(DARKROOM_CACHE_FILE, 'r') as old_f:
+                        old_cache = json.load(old_f)
+                        # Mappa id -> {hash, parent}
+                        old_meta = {f['id']: {'h': f.get('visual_hash'), 'p': f.get('parent_name')} for f in old_cache.get("raw_files", [])}
+                        for f in final_files:
+                            meta = old_meta.get(f['id'])
+                            if meta:
+                                if meta['h']: f['visual_hash'] = meta['h']
+                                if meta['p'] and not f.get('parent_name'): f['parent_name'] = meta['p']
+            except: pass
+
+            save_darkroom_cache(final_files)
+            all_files = final_files 
         except Exception as e:
             print(f"❌ Errore Drive Scan: {e}")
             return []
@@ -697,10 +927,24 @@ def get_darkroom_images(refresh: bool = False, db: Session = Depends(get_db)):
         print(f"⚠️ Errore lettura associazioni DB: {e}")
 
     valid_images = []
+    import re
     for f in all_files:
         if f['mimeType'].startswith('application/'): continue
         f_copy = f.copy()
         f_copy['associated'] = f['id'] in associated_ids
+        
+        # LOGICA AUTO-MATCH RIGA + CONTESTO CARTELLA
+        # Cerchiamo un numero all'inizio del file (es: "14_...", "14 ...", "14.jpg")
+        row_match = re.match(r'^(\d+)', f['name'])
+        if row_match:
+            f_copy['suggested_row'] = int(row_match.group(1))
+            # Includiamo il nome della cartella per la disambiguazione
+            # (get_darkroom_images dovrebbe già avere info sulla cartella o possiamo dedurla)
+            f_copy['folder_context'] = f.get('parent_name', '').upper()
+        else:
+            f_copy['suggested_row'] = None
+            f_copy['folder_context'] = None
+            
         valid_images.append(f_copy)
         # Popoliamo la cache dei thumbnail per velocizzare il proxy
         if f.get('thumbnailLink'):
@@ -782,6 +1026,35 @@ def darkroom_search_products(q: str = "", only_pending: str = "false", db: Sessi
         print(f"Search Error: {e}")
         return []
 
+@app.get("/api/darkroom/find-matching-images")
+async def find_matching_images(q: str, db: Session = Depends(get_db)):
+    """Cerca immagini che corrispondono a un prodotto specifico (Product Radar)."""
+    all_files = get_darkroom_images(refresh=False, db=db)
+    
+    # Filtro associati (già pronti)
+    results = db.execute(text("SELECT matched_images_json FROM products WHERE matched_images_json IS NOT NULL AND matched_images_json != '' AND matched_images_json != '[]'")).all()
+    taken_ids = set()
+    for row in results:
+        try:
+            p_ids = json.loads(row[0])
+            if isinstance(p_ids, list):
+                for pid in p_ids: taken_ids.add(str(pid))
+        except: continue
+        
+    free_files = [f for f in all_files if str(f['id']) not in taken_ids]
+    
+    query = q.lower()
+    matching_ids = []
+    
+    # 1. Ricerca testuale semplice nei nomi file
+    for f in free_files:
+        if query in f['name'].lower():
+            matching_ids.append(f['id'])
+            
+    # 2. Se abbiamo hash, potremmo espandere la ricerca (futuro)
+    
+    return {"matching_ids": matching_ids}
+
 @app.get("/api/darkroom/analyze-vision")
 async def darkroom_analyze_vision(file_id: str, product_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Analizza un'immagine con Gemini Vision usando i dati del Master come vincoli."""
@@ -862,6 +1135,62 @@ async def darkroom_analyze_vision(file_id: str, product_id: Optional[int] = None
     except Exception as e:
         print(f"Vision Error: {e}")
         return {"error": str(e)}
+
+@app.post("/api/darkroom/mass-associate-by-row")
+async def mass_associate_by_row(request: Request, db: Session = Depends(get_db)):
+    """Associa automaticamente le immagini, opzionalmente filtrando per una cartella specifica."""
+    data = await request.json() if await request.body() else {}
+    target_folder = (data.get("folder_context") or "").upper()
+    
+    all_files = get_darkroom_images(refresh=False, db=db)
+    to_process = [f for f in all_files if not f.get('associated') and f.get('suggested_row')]
+    
+    # Filtro opzionale per cartella (Crumble Menu)
+    if target_folder:
+        to_process = [f for f in to_process if f.get('folder_context') == target_folder]
+    
+    if not to_process:
+        return {"status": "info", "message": f"Nessuna immagine trovata {'nella sezione ' + target_folder if target_folder else ''}."}
+        
+    count = 0
+    grouped = {} # (row, context) -> [file_ids]
+    for f in to_process:
+        key = (f['suggested_row'], f.get('folder_context', ''))
+        if key not in grouped: grouped[key] = []
+        grouped[key].append(f['id'])
+        
+    for (row_idx, context), fids in grouped.items():
+        # Cerchiamo i prodotti con quella riga
+        candidates = db.query(Product).filter(Product.original_sheets_row == row_idx).all()
+        
+        target_product = None
+        if len(candidates) == 1:
+            target_product = candidates[0]
+        elif len(candidates) > 1 and context:
+            # Disambiguazione per contesto cartella (es. "BORSE > DONNA" vs "BORSE DONNA")
+            norm_context = context.replace(" > ", " ").replace("/", " ").upper()
+            for p in candidates:
+                p_context = (p.source_sheet or p.category or "").replace("/", " ").upper()
+                if norm_context in p_context or p_context in norm_context or any(word in p_context for word in norm_context.split() if len(word) > 3):
+                    target_product = p
+                    break
+                    
+        if target_product:
+            # Associazione
+            current = []
+            try:
+                if target_product.matched_images_json:
+                    current = json.loads(target_product.matched_images_json)
+                    if not isinstance(current, list): current = []
+            except: current = []
+            
+            new_list = list(set(current + fids))
+            target_product.matched_images_json = json.dumps(new_list)
+            target_product.status = "MATCHED"
+            count += len(fids)
+            
+    db.commit()
+    return {"status": "success", "message": f"Associazione contestualizzata: {count} immagini collegate."}
 
 @app.post("/api/darkroom/associate-bulk")
 async def darkroom_associate_bulk(request: Request, db: Session = Depends(get_db)):
@@ -1089,12 +1418,34 @@ async def import_shopify_product(request: Request):
     return await bridge.import_product_to_pim(data, mode=mode)
 
 @app.post("/api/shopify/publish")
-async def publish_shopify_product(request: Request):
+async def publish_shopify_product(request: Request, db: Session = Depends(get_db)):
     data = await request.json()
     sku = data.get("sku")
+    product_id = data.get("product_id")
+    
+    # Lookup product
+    product = None
+    if product_id:
+        product = db.query(Product).filter(Product.id == product_id).first()
+    elif sku and sku != "N/A":
+        product = db.query(Product).filter(Product.sku == sku).first()
+    
+    if not product:
+        return {"status": "error", "message": "Prodotto non trovato nel database PIM."}
+        
+    # VALIDAZIONE CRITICA: Impediamo la pubblicazione senza immagini
+    if not product.matched_images_json or product.matched_images_json == "[]":
+        return {"status": "error", "message": "Impossibile pubblicare: il prodotto non ha immagini associate nel PIM."}
+
     from shopify_bridge import ShopifyBridge
     bridge = ShopifyBridge()
-    return await bridge.publish_product_to_shopify(sku)
+    # Passiamo sia lo SKU che l'ID per sicurezza (il bridge userà lo SKU per Shopify)
+    success = await bridge.publish_product_to_shopify(product.sku or f"SKU-{product.id}")
+    
+    if success:
+        return {"status": "ok"}
+    else:
+        return {"status": "error", "message": "Errore durante la comunicazione con Shopify."}
 
 @app.post("/api/vault/manual-match")
 async def vault_manual_match(request: Request, db: Session = Depends(get_db)):
@@ -1805,16 +2156,21 @@ async def sync_drive_images(db: Session = Depends(get_db)):
         matched_count = 0
         
         for p in products:
+            # PROTEZIONE: Non sovrascrivere mai associazioni manuali o già esistenti
+            if p.matched_images_json and p.matched_images_json != "[]" and p.matched_images_json != "":
+                continue
+                
             # Creiamo un set di parole chiave dal prodotto
             keywords = set()
             if p.brand: keywords.add(p.brand.lower())
             if p.model: keywords.update(p.model.lower().replace('-', ' ').split())
             if p.sku: keywords.add(p.sku.lower())
-            if p.seo_title: keywords.update(p.seo_title.lower().replace('-', ' ').split()[:4])
             
-            # Filtro qualità parole
-            keywords = {k for k in keywords if len(k) > 2}
-            if not keywords: continue
+            # Filtro qualità parole (escludiamo parole comuni e corte)
+            stop_words = {"pochette", "borsa", "tracolla", "nera", "nero", "pelle", "media", "piccola", "vintage"}
+            keywords = {k for k in keywords if len(k) > 3 and k not in stop_words}
+            
+            if not keywords and not p.sku: continue
             
             valid_images = []
             sku_lower = p.sku.lower() if p.sku else None
@@ -1825,9 +2181,9 @@ async def sync_drive_images(db: Session = Depends(get_db)):
                 # Check Intersezione
                 match_count = sum(1 for k in keywords if k in name_norm)
                 
-                # Regola: SKU match (Priorità Massima) o Euristica Brand/Keywords
+                # Regola: SKU match (Priorità Massima) o Euristica Brand/Keywords MOLTO STRETTA
                 is_sku_match = sku_lower and (sku_lower in name_norm)
-                if is_sku_match or (p.brand and p.brand.lower() in name_norm and match_count >= 2) or (match_count >= 3):
+                if is_sku_match or (p.brand and p.brand.lower() in name_norm and match_count >= 3):
                     valid_images.append({
                         "id": item["id"],
                         "name": item["name"],
@@ -2174,7 +2530,7 @@ def atelier_lab(request: Request, category: str = None, brand: str = None, db: S
     # Query più inclusiva per debug e per Postgres
     # Query ultra-permissiva con stringhe dirette per Postgres
     query = db.query(Product).filter(
-        (Product.status.in_(["Draft", "Ready", "Validating", "Error"])) &
+        (Product.status.in_(["Draft", "Ready", "Validating", "Error", "MATCHED"])) &
         (
             (Product.matched_images_json.isnot(None)) & (Product.matched_images_json != "[]") & (Product.matched_images_json != "") |
             (Product.drive_folder_id.isnot(None)) & (Product.drive_folder_id != "")

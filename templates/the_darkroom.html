@@ -23,14 +23,15 @@
         <div class="sub-tab" onclick="setFilter('pending')" id="tab-pending">DA ASSOCIARE <span class="badge-count" id="count-pending">0</span></div>
         <div class="sub-tab" onclick="setFilter('completed')" id="tab-completed">COMPLETATI <span class="badge-count" id="count-completed">0</span></div>
     </div>
-    
-    <div style="display: flex; gap: 8px;">
-        <button onclick="selectAllVisible()" class="btn-action">
-            <i class="ph ph-check-square"></i> SELEZIONA TUTTO
-        </button>
-        <button onclick="clearSelection()" class="btn-action" style="opacity: 0.6;">
-            <i class="ph ph-x-square"></i> DESELEZIONA
-        </button>
+</div>
+
+<!-- FOLDER CRUMBLE MENU -->
+<div id="folder-filter-container" style="display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+    <div style="font-size: 0.65rem; font-weight: 900; color: var(--accent-gold); width: 100%; margin-bottom: 8px; letter-spacing: 1px; text-transform: uppercase;">
+        <i class="ph ph-folder-open"></i> Filtra per Sezione:
+    </div>
+    <div id="folder-chips" style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <!-- Populated via JS -->
     </div>
 </div>
 
@@ -72,6 +73,7 @@
         
         try {
             await DarkroomCore.syncDrive(true);
+            renderFolderFilters();
             updateCounts();
             renderGrid();
             status.innerText = `(${DarkroomCore.allImages.length} asset)`;
@@ -79,6 +81,25 @@
             status.innerText = "(Errore)";
             grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 100px; color: #ef4444;">Errore: ${err.message}</div>`;
         }
+    }
+
+    let currentFolderFilter = null;
+
+    function renderFolderFilters() {
+        const container = document.getElementById('folder-chips');
+        const folders = [...new Set(DarkroomCore.allImages.map(img => img.parent_name || "Senza Cartella"))].sort();
+        
+        let html = `<div class="folder-chip ${!currentFolderFilter ? 'active' : ''}" onclick="setFolderFilter(null)">TUTTE LE CARTELLE</div>`;
+        folders.forEach(f => {
+            html += `<div class="folder-chip ${currentFolderFilter === f ? 'active' : ''}" onclick="setFolderFilter('${f}')">${f.toUpperCase()}</div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    function setFolderFilter(folder) {
+        currentFolderFilter = folder;
+        renderFolderFilters();
+        renderGrid();
     }
 
     function toggleImageSelection(id) {
@@ -243,10 +264,13 @@
                 .map(img => img.name.split('.')[0].toLowerCase().trim())
         );
 
-        const filtered = DarkroomCore.getFilteredImages(DarkroomCore.currentFilter, jpgNames);
+        const filtered = DarkroomCore.getFilteredImages(DarkroomCore.currentFilter, jpgNames).filter(img => {
+            if (!currentFolderFilter) return true;
+            return (img.parent_name || "Senza Cartella") === currentFolderFilter;
+        });
 
         if (filtered.length === 0) {
-            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 100px; color: var(--text-secondary);">Nessun asset in questa categoria.</div>';
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 100px; color: var(--text-secondary);">Nessun asset in questa categoria o cartella.</div>';
             return;
         }
 
@@ -379,6 +403,32 @@
 .sub-tab.active .badge-count {
     background: var(--accent-gold);
     color: #000;
+}
+
+/* FOLDER CHIPS */
+.folder-chip {
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.folder-chip:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border-color: rgba(255,255,255,0.2);
+}
+.folder-chip.active {
+    background: var(--accent-gold);
+    color: #000;
+    border-color: var(--accent-gold);
+    box-shadow: 0 4px 15px rgba(212,175,55,0.2);
 }
 </style>
 {% endblock %}

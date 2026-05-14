@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Vision Board | Atelier AI</title>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        :root {
+            --bg-deep: #0a0a0a;
+            --bg-card: #141414;
+            --accent-gold: #c5a059;
+            --text-main: #e0e0e0;
+            --text-dim: #888;
+        }
+        body {
+            background: var(--bg-deep);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .board-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 25px;
+        }
+        .proposal-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+        .proposal-card:hover {
+            border-color: var(--accent-gold);
+            transform: translateY(-5px);
+        }
+        .image-gallery {
+            height: 200px;
+            display: flex;
+            gap: 2px;
+            background: #000;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .image-gallery img {
+            height: 100%;
+            object-fit: cover;
+            min-width: 150px;
+        }
+        .card-content {
+            padding: 20px;
+            flex: 1;
+        }
+        .ai-badge {
+            background: rgba(197, 160, 89, 0.1);
+            color: var(--accent-gold);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .suggestion-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin: 0 0 5px 0;
+        }
+        .suggestion-meta {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-bottom: 15px;
+        }
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: auto;
+            padding: 15px 20px;
+            background: rgba(0,0,0,0.2);
+        }
+        .btn {
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex: 1;
+        }
+        .btn-primary { background: var(--accent-gold); color: #000; }
+        .btn-secondary { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); }
+        
+        #loading-overlay {
+            position: fixed; top:0; left:0; right:0; bottom:0;
+            background: var(--bg-deep);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <i class="ph ph-circle-notch ph-spin" style="font-size: 3rem; color: var(--accent-gold);"></i>
+        <p id="loading-status" style="margin-top: 20px; font-weight: 600;">Inizializzazione Radar Visivo...</p>
+        <div style="width: 300px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 15px; overflow: hidden;">
+            <div id="loading-bar" style="width: 0%; height: 100%; background: var(--accent-gold); transition: width 0.3s;"></div>
+        </div>
+        <p id="loading-detail" style="margin-top: 10px; font-size: 0.7rem; opacity: 0.5;">Analisi dei metadati di Drive...</p>
+    </div>
+
+    <div class="board-header">
+        <div>
+            <h1 style="margin:0; font-size: 1.8rem;">Vision Board <span style="color: var(--accent-gold); font-weight: 300;">3.0</span></h1>
+            <p style="margin:5px 0 0 0; color: var(--text-dim); font-size: 0.9rem;">Convalida le proposte generate dall'intelligenza artificiale</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button class="btn btn-secondary" onclick="refreshBoard()"><i class="ph ph-arrows-clockwise"></i> Aggiorna</button>
+            <button class="btn btn-primary"><i class="ph ph-lightning"></i> Approva Tutti</button>
+        </div>
+    </div>
+
+    <div class="board-grid" id="proposals-grid">
+        <!-- Le card verranno inserite qui -->
+    </div>
+
+    <script>
+        async function loadProposals() {
+            try {
+                const statusRes = await fetch('/api/darkroom/scan-progress');
+                const status = await statusRes.json();
+                
+                updateLoading(status);
+                
+                if (status.percent < 100) {
+                    // C'è ancora da analizzare
+                    await startScanSession();
+                    setTimeout(loadProposals, 500); // Continua a scansionare
+                } else {
+                    // Analisi finita, carichiamo i batch
+                    const res = await fetch('/api/darkroom/batches');
+                    const batches = await res.json();
+                    renderBoard(batches);
+                    document.getElementById('loading-overlay').style.display = 'none';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function updateLoading(status) {
+            const bar = document.getElementById('loading-bar');
+            const statusText = document.getElementById('loading-status');
+            const detailText = document.getElementById('loading-detail');
+            
+            const p = Math.round(status.percent);
+            bar.style.width = `${p}%`;
+            statusText.innerText = `Analisi Visiva in corso: ${p}%`;
+            detailText.innerText = `Analizzato: ${status.hashed} / ${status.total} asset`;
+        }
+
+        async function startScanSession() {
+            await fetch('/api/darkroom/start-scan?batch_size=50', {method: 'POST'});
+        }
+
+        function renderBoard(batches) {
+            const grid = document.getElementById('proposals-grid');
+            grid.innerHTML = '';
+            
+            batches.forEach((batch, index) => {
+                const card = document.createElement('div');
+                card.className = 'proposal-card';
+                card.id = `proposal-${batch.id}`;
+                
+                const imagesHtml = batch.images.map(img => `<img src="/api/drive/proxy/${img.id}" loading="lazy">`).join('');
+                
+                card.innerHTML = `
+                    <div class="image-gallery">${imagesHtml}</div>
+                    <div class="card-content">
+                        <div class="ai-badge"><i class="ph ph-sparkle"></i> IA SUGGESTION</div>
+                        <h3 class="suggestion-title" id="title-${batch.id}">Analisi in corso...</h3>
+                        <p class="suggestion-meta">${batch.count} Asset rilevati • Batch ${batch.id.split('_')[1]}</p>
+                        
+                        <div style="background: rgba(255,255,255,0.02); border-radius:10px; padding:15px; border:1px dashed rgba(255,255,255,0.1);" id="match-box-${batch.id}">
+                            <p style="font-size:0.75rem; opacity:0.5; margin:0;">Prodotto suggerito dal catalogo:</p>
+                            <p style="font-weight:600; margin:5px 0 0 0;" id="match-name-${batch.id}">Ricerca in corso...</p>
+                        </div>
+                    </div>
+                    <div class="action-bar">
+                        <button class="btn btn-secondary" onclick="manualFix('${batch.id}')"><i class="ph ph-magnifying-glass"></i> Dettagli</button>
+                        <button class="btn btn-primary" id="btn-approve-${batch.id}" onclick="approveBatch('${batch.id}')" disabled><i class="ph ph-check-circle"></i> Approva & Pubblica</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+                
+                // Lanciamo l'identificazione asincrona
+                identifyBatch(batch.id);
+            });
+        }
+
+        async function identifyBatch(batchId) {
+            try {
+                const res = await fetch(`/api/darkroom/identify-batch/${batchId}`);
+                const data = await res.json();
+                
+                const titleEl = document.getElementById(`title-${batchId}`);
+                const matchNameEl = document.getElementById(`match-name-${batchId}`);
+                const btnApprove = document.getElementById(`btn-approve-${batchId}`);
+                
+                if (data.ai_identification) {
+                    const ai = data.ai_identification;
+                    titleEl.innerText = `${ai.brand} ${ai.model}`;
+                    titleEl.style.color = 'var(--accent-gold)';
+                }
+                
+                if (data.top_match) {
+                    const m = data.top_match;
+                    matchNameEl.innerHTML = `
+                        <span style="color:#fff;">${m.brand} | ${m.model}</span><br>
+                        <span style="font-size:0.7rem; color:var(--accent-gold);">${m.color} • ${m.size || m.dimensions || ''}</span>
+                    `;
+                    btnApprove.disabled = false;
+                    btnApprove.dataset.productId = m.id;
+                } else {
+                    matchNameEl.innerText = "Nessun match trovato nel catalogo.";
+                    matchNameEl.style.color = "#ff4444";
+                }
+            } catch (e) {
+                console.error("Identify failed", e);
+            }
+        }
+
+        async function approveBatch(batchId) {
+            const btn = document.getElementById(`btn-approve-${batchId}`);
+            const productId = btn.dataset.productId;
+            
+            // Recuperiamo gli ID immagine dal batch originale
+            // (In una versione reale dovremmo salvare l'oggetto batch in una variabile globale)
+            const res = await fetch('/api/darkroom/batches');
+            const batches = await res.json();
+            const batch = batches.find(b => b.id === batchId);
+            
+            if (!batch || !productId) return;
+            
+            const imageIds = batch.images.map(img => img.id);
+            
+            btn.innerHTML = '<i class="ph ph-circle-notch ph-spin"></i> Pubblicazione...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/darkroom/associate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        product_id: productId,
+                        image_ids: imageIds
+                    })
+                });
+                
+                if (response.ok) {
+                    // Animazione sparizione card
+                    const card = document.getElementById(`proposal-${batchId}`);
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch (e) {
+                console.error("Association failed", e);
+                btn.innerHTML = '<i class="ph ph-warning"></i> Errore';
+            }
+        }
+        
+        function manualFix(batchId) {
+            alert("Questa funzione aprirà il dettaglio per correggere il match manuale (Work in progress).");
+        }
+
+        function refreshBoard() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            loadProposals();
+        }
+
+        window.onload = loadProposals;
+    </script>
+</body>
+</html>

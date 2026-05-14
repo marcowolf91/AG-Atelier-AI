@@ -26,6 +26,7 @@ Base = declarative_base()
 
 class ProductStatus(enum.Enum):
     Draft = "Draft"
+    MATCHED = "MATCHED"
     Processing = "Processing"
     Validating = "Validating"
     Ready = "Ready"

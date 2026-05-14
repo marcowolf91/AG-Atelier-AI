@@ -1,12 +1,13 @@
-
 import json
 import re
 import httpx
+import base64
+import requests
 from auth_manager import get_raw_api_key
 
 class AIAgent:
     def __init__(self):
-        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
     async def get_clean_json(self, prompt, model_choice="llama3"):
         """Chiama l'AI e garantisce la restituzione di un oggetto JSON pulito."""
@@ -35,10 +36,44 @@ class AIAgent:
             
         return data
 
+    def analyze_image_vision(self, file_id, prompt):
+        """Analizza un'immagine usando Gemini 1.5 Flash."""
+        api_key = get_raw_api_key("gemini")
+        url = f"{self.gemini_url}?key={api_key}"
+        
+        try:
+            from google_auth import get_credentials
+            from googleapiclient.discovery import build
+            creds = get_credentials()
+            drive_service = build('drive', 'v3', credentials=creds)
+            
+            content = drive_service.files().get_media(fileId=file_id).execute()
+            b64_image = base64.b64encode(content).decode('utf-8')
+            
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": b64_image
+                            }
+                        }
+                    ]
+                }]
+            }
+            
+            resp = requests.post(url, json=payload, timeout=30.0)
+            res_data = resp.json()
+            
+            return res_data['candidates'][0]['content']['parts'][0]['text']
+        except Exception as e:
+            return f"Error: {str(e)}"
+
     def extract_json(self, text):
         if not text or not isinstance(text, str): return {}
         try:
-            # Rimuove commenti in stile C (// e /* */) che spesso rompono il JSON
             clean_text = re.sub(r'//.*', '', text)
             clean_text = re.sub(r'/\*.*?\*/', '', clean_text, flags=re.DOTALL)
             
@@ -48,7 +83,6 @@ class AIAgent:
                 try:
                     return json.loads(raw_json)
                 except json.JSONDecodeError:
-                    # Fallback per apici singoli
                     fixed_json = raw_json.replace("'", '"')
                     try:
                         return json.loads(fixed_json)
@@ -69,73 +103,33 @@ class AIAgent:
 
     def build_fashion_prompt(self, item):
         """Costruisce il prompt specifico per la moda con esempi reali (Few-Shot)."""
-        
-        # Logica Dinamica per lo Stile
         is_regen = bool(item.ai_description_it and len(item.ai_description_it) > 10)
-        
-        # DATI MASTER
         brand = item.brand if item.brand else "N/D"
         model = item.model if item.model else "N/D"
 
         if is_regen:
-            # OPZIONE 3: BOUTIQUE
             style_instruction = f"""
-            STRUTTURA OBBLIGATORIA: Un paragrafo intro di 2 righe (DEVE ESSERE INVENTATO E DIVERSO DALL'ESEMPIO), seguito da un elenco puntato con i dati tecnici.
-            ESEMPIO DI STRUTTURA (NON COPIARE IL TESTO, INVENTANE UNO NUOVO):
-            [La tua descrizione creativa e originale di 2 righe qui...]
-            
-            - **Materiale:** [inserire materiale]
-            - **Condizioni:** [inserire condizioni fornite nei Dati Prodotto]
-            - **Corredo:** [inserire corredo fornito nei Dati Prodotto]
+            STRUTTURA OBBLIGATORIA: Un paragrafo intro di 2 righe, seguito da un elenco puntato con i dati tecnici.
             """
         else:
-            # OPZIONE 2: IBRIDA
             style_instruction = f"""
-            STRUTTURA OBBLIGATORIA: Un paragrafo descrittivo di 3 righe (DEVE ESSERE INVENTATO E 100% ORIGINALE, DIVERSO DALL'ESEMPIO), seguito RIGOROSAMENTE da un elenco con i dettagli tecnici.
-            ESEMPIO DI STRUTTURA (VIETATO COPIARE IL TESTO DI ESEMPIO, SCRIVI UNA DESCRIZIONE TUA BASATA SUL PRODOTTO):
-            [Inserisci qui la tua descrizione creativa, focalizzata sul modello {brand} {model}. Descrivi il design, la storia e le vere caratteristiche dell'oggetto.]
-            
-            Materiale: [inserire materiale]
-            Dettagli: [inserire 2 dettagli estetici o funzionali specifici del modello]
-            Condizioni: [inserire condizioni fornite nei Dati Prodotto]
-            Corredo: [inserire corredo fornito nei Dati Prodotto]
+            STRUTTURA OBBLIGATORIA: Un paragrafo descrittivo di 3 righe, seguito RIGOROSAMENTE da un elenco con i dettagli tecnici.
             """
 
-        # LOGICA GENERE / CATEGORIA
         cat_low = (item.category or "").lower()
-        gender_hint = "l'articolo" # Default
+        gender_hint = "l'articolo"
         if "borsa" in cat_low or "pochette" in cat_low or "scarpe" in cat_low or "donna" in cat_low:
             gender_hint = "la borsa / la calzatura (femminile)"
-        if "zaino" in cat_low or "uomo" in cat_low or "abbigliamento" in cat_low:
-            gender_hint = "lo zaino / il capo (maschile)"
-        if "occhiali" in cat_low:
-            gender_hint = "gli occhiali (maschile plurale)"
-        if "cappelli" in cat_low:
-            gender_hint = "il cappello / i cappelli (maschile)"
-
+        
         full_prompt = f"""
         # ISTRUZIONI PER CATALOGO DI LUSSO
-        
         DATI PRODOTTO: 
         - Titolo Attuale: {item.seo_title or 'N/D'}
         - Brand: {brand}
         - Modello: {model}
         - Materiale: {item.material or 'N/D'}
-        - Categoria: {item.category or 'N/D'}
-        - Condizioni: {item.condition_grade or 'N/D'}
-        - Corredo/Accessori: {item.accessories_included or 'N/D'}
         
         ## TASK: Genera un JSON con 'seo_title', 'tags' e 'ai_description_it'.
-        
-        IMPORTANTE: La descrizione DEVE seguire questo stile:
         {style_instruction}
-        
-        REGOLE IMPERATIVE (PENALITÀ MASSIMA SE VIOLATE):
-        1. NON USARE 'SNEAKERS', usa 'Scarpe' o 'Calzature'.
-        2. LINGUA: LA DESCRIZIONE DEVE ESSERE SCRITTA ESCLUSIVAMENTE IN LINGUA ITALIANA. SE SCRIVI IN INGLESE, IL SISTEMA ANDRÀ IN CRASH.
-        3. Genere e Numero: USA SEMPRE IL SINGOLARE (es. "questa borsa", "questo modello", NON "queste borse") a meno che il prodotto non sia intrinsecamente plurale come gli occhiali. Assicurati di usare articoli e aggettivi corretti per {gender_hint}.
-        4. Creatività e Originalità: VARIA SEMPRE IL LESSICO E LA STRUTTURA. NON usare MAI frasi fatte o cliché come "sintesi perfetta", "ideale per chi cerca", "must-have", "destinati a diventare". Sii descrittivo, elegante e unico per ogni prodotto. Focalizzati sulle caratteristiche reali e sull'heritage del brand.
-        5. Formato: JSON PURO. VIETATO ASSOLUTAMENTE inserire commenti (niente // o /* */), spiegazioni o testo Markdown (niente ```json). Usa solo le doppie virgolette per chiavi e valori stringa.
-        6. Titolo SEO: Il campo 'seo_title' deve contenere ESCLUSIVAMENTE il Brand e il Modello in formato Title Case (es. 'Louis Vuitton Papillon Trunk'). NON aggiungere mai categorie, aggettivi, o parole come 'Borsa', 'Di Lusso', ecc.
         """
         return full_prompt

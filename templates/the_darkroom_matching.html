@@ -11,6 +11,18 @@
             <span>Coda Matching</span>
             <span id="match-queue-count" class="badge-count">0</span>
         </div>
+        <div id="folder-chips-container" style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; padding: 6px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); max-height: 100px; overflow-y: auto;">
+            <!-- Populated via JS -->
+        </div>
+        <div id="auto-match-bar" style="display: none; background: rgba(76, 175, 80, 0.1); border: 1px solid #4CAF50; border-radius: 8px; padding: 10px; margin-bottom: 15px;">
+            <div style="font-size: 0.65rem; color: #4CAF50; font-weight: 800; margin-bottom: 8px;">
+                <i class="ph ph-magic-wand"></i> AUTO-MATCH DISPONIBILE
+            </div>
+            <div id="auto-match-text" style="font-size: 0.6rem; margin-bottom: 10px; opacity: 0.8;">Vedo 0 foto con numero di riga.</div>
+            <button onclick="runMassAssociateByRow()" class="btn btn-success btn-sm w-100" style="font-size: 0.6rem; font-weight: 800;">
+                ASSOCIA TUTTO ORA
+            </button>
+        </div>
         <div id="match-asset-queue" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: flex-start;">
             <!-- Populated via JS -->
         </div>
@@ -51,6 +63,14 @@
             </div>
             <label style="font-size: 0.55rem; color: var(--text-secondary); display: block; margin-bottom: 5px;">SEO FILENAME SUGGERITO</label>
             <input type="text" id="seo-filename" class="glass-input" style="margin-bottom: 15px; font-family: monospace; font-size: 0.75rem; color: var(--accent-gold); height: 40px; border: 1px solid rgba(255,255,255,0.1);">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <button id="btn-radar" onclick="runProductRadar()" class="btn btn-sm" style="flex: 1; background: rgba(255,255,255,0.05); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.65rem; font-weight: 800; height: 35px;">
+                    <i class="ph ph-radar"></i> RADAR AI
+                </button>
+                <button id="btn-suggest" onclick="aiSuggestProduct()" class="btn btn-sm" style="flex: 1; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); font-size: 0.65rem; font-weight: 800; height: 35px;">
+                    <i class="ph ph-sparkle"></i> SUGGEST
+                </button>
+            </div>
             <button id="btn-associate" onclick="finalizeAssociation()" class="btn attr-primary" style="width: 100%; height: 50px; font-weight: 900; font-size: 0.85rem; text-transform: uppercase;">
                 ASSOCIA & PUBBLICA <i class="ph ph-paper-plane-right"></i>
             </button>
@@ -114,74 +134,204 @@
     `;
     document.head.appendChild(style);
 
+    let currentFolderFilter = null;
+
     async function init() {
         await DarkroomCore.syncDrive(false);
         
-        let targetIds = [...fileIds];
+        console.log("🚀 Inizializzazione Matching Station...");
         
-        // --- FILTRO ANTI-DOPPIONI: Controllo associazioni esistenti ---
-        if (targetIds.length > 0) {
-            try {
-                const checkRes = await fetch('/api/darkroom/check-associations', {
+        try {
+            // Se abbiamo ID specifici nell'URL, carichiamo quelli
+            if (fileIds.length > 0) {
+                const res = await fetch('/api/darkroom/files-by-ids', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ids: targetIds})
+                    body: JSON.stringify({ids: fileIds})
                 });
-                const checkData = await checkRes.json();
-                if (checkData.associated && checkData.associated.length > 0) {
-                    const beforeCount = targetIds.length;
-                    targetIds = targetIds.filter(id => !checkData.associated.includes(id));
-                    showToast(`♻️ Rimossi ${beforeCount - targetIds.length} asset già associati in precedenza.`, "info");
-                }
-            } catch(e) { console.error("Assoc check failed", e); }
-        }
-
-        if (targetIds.length > 0) {
-            queueImages = DarkroomCore.allImages.filter(img => targetIds.includes(img.id));
-            if (queueImages.length < targetIds.length) {
-                const missingIds = targetIds.filter(id => !queueImages.find(img => img.id === id));
-                try {
-                    const res = await fetch('/api/darkroom/files-by-ids', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ids: missingIds})
-                    });
-                    const directFiles = await res.json();
-                    queueImages = [...queueImages, ...directFiles];
-                    DarkroomCore.allImages = [...DarkroomCore.allImages, ...directFiles];
-                } catch(e) {}
+                queueImages = await res.json();
+            } else {
+                // Altrimenti carichiamo tutto il magazzino libero
+                const res = await fetch('/api/darkroom/images');
+                const all = await res.json();
+                // Filtriamo solo quelli non associati
+                queueImages = all.filter(img => !img.associated);
             }
-        } else if (fileIds.length === 0) {
-            // Caso caricamento generico senza selezione specifica
-            queueImages = DarkroomCore.allImages.filter(img => {
-                const name = (img.name || "").toLowerCase();
-                const isJpg = name.endsWith('.jpg') || name.endsWith('.jpeg');
-                return isJpg && !img.associated;
-            });
+            
+            console.log(`✅ Assets pronti: ${queueImages.length}`);
+            renderFolderFilters();
+            renderQueue();
+            updateAutoMatchBar();
+        } catch (e) {
+            console.error("Init Error:", e);
+            showToast("Impossibile caricare la coda immagini.", "error");
         }
         
-        renderQueue();
         handleProductSearch('');
+    }
+
+    function renderFolderFilters() {
+        const container = document.getElementById('folder-chips-container');
+        if (!container) return;
+        const folders = [...new Set(queueImages.map(img => img.parent_name || "Senza Cartella"))].sort();
+        
+        let html = `<div class="folder-chip ${!currentFolderFilter ? 'active' : ''}" onclick="setFolderFilter(null)">TUTTE</div>`;
+        folders.forEach(f => {
+            html += `<div class="folder-chip ${currentFolderFilter === f ? 'active' : ''}" onclick="setFolderFilter('${f}')">${f.toUpperCase()}</div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    function setFolderFilter(folder) {
+        currentFolderFilter = folder;
+        renderFolderFilters();
+        renderQueue();
+        updateAutoMatchBar();
+    }
+
+    let radarFilterIds = null;
+
+    async function runProductRadar() {
+        if (!selectedProductId) {
+            showToast("Seleziona prima un prodotto dal catalogo.", "warning");
+            return;
+        }
+        const product = lastSearchResults.find(p => p.id === selectedProductId);
+        if (!product) return;
+
+        const btn = document.getElementById('btn-radar');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-radar ph-spin"></i> SCANNING...';
+
+        try {
+            const query = `${product.brand} ${product.model}`;
+            const res = await fetch(`/api/darkroom/find-matching-images?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            
+            if (data.matching_ids && data.matching_ids.length > 0) {
+                radarFilterIds = data.matching_ids;
+                showToast(`Radar AI: Trovate ${data.matching_ids.length} foto corrispondenti.`);
+                
+                if (!document.getElementById('btn-reset-radar')) {
+                    const actions = document.getElementById('matching-actions-area');
+                    const resetBtn = document.createElement('button');
+                    resetBtn.id = 'btn-reset-radar';
+                    resetBtn.className = 'btn btn-sm w-100 mt-2';
+                    resetBtn.style.cssText = 'background:rgba(255,50,50,0.1); color:#ff5555; border:1px solid rgba(255,50,50,0.3); font-size:0.6rem; font-weight:700; height:30px;';
+                    resetBtn.innerHTML = '<i class="ph ph-x-circle"></i> RESET FILTRO RADAR';
+                    resetBtn.onclick = resetRadarFilter;
+                    actions.appendChild(resetBtn);
+                }
+            } else {
+                showToast("Nessuna immagine trovata per questo modello.", "warning");
+            }
+            renderQueue();
+        } catch (e) {
+            console.error("Radar error:", e);
+            showToast("Errore Radar AI.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    function resetRadarFilter() {
+        radarFilterIds = null;
+        const btn = document.getElementById('btn-reset-radar');
+        if (btn) btn.remove();
+        renderQueue();
+    }
+
+    async function runMassAssociateByRow() {
+        const msg = currentFolderFilter 
+            ? `Vuoi associare automaticamente tutte le foto della sezione "${currentFolderFilter.toUpperCase()}" che hanno un numero di riga corrispondente?`
+            : "Vuoi associare automaticamente tutte le foto che hanno un numero di riga corrispondente?";
+            
+        if (!confirm(msg)) return;
+        
+        try {
+            const res = await fetch('/api/darkroom/mass-associate-by-row', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder_context: currentFolderFilter })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                showToast(data.message);
+                init(); // Ricarichiamo tutto
+            } else {
+                showToast(data.message, "info");
+            }
+        } catch (e) {
+            showToast("Errore durante l'auto-match.", "error");
+        }
+    }
+
+    function updateAutoMatchBar() {
+        const autoMatchBar = document.getElementById('auto-match-bar');
+        const autoMatchText = document.getElementById('auto-match-text');
+        if (!autoMatchBar) return;
+
+        let targetImages = queueImages.filter(img => !img.associated && img.suggested_row);
+        if (currentFolderFilter) {
+            targetImages = targetImages.filter(img => (img.parent_name || "Senza Cartella") === currentFolderFilter);
+        }
+
+        if (targetImages.length > 0) {
+            autoMatchBar.style.display = 'block';
+            autoMatchText.innerText = `Vedo ${targetImages.length} foto con numero di riga pronte per l'auto-match ${currentFolderFilter ? 'in ' + currentFolderFilter : ''}.`;
+        } else {
+            autoMatchBar.style.display = 'none';
+        }
     }
 
     function renderQueue() {
         const queue = document.getElementById('match-asset-queue');
-        document.getElementById('match-queue-count').innerText = queueImages.length;
+        const countBadge = document.getElementById('match-queue-count');
+        
+        if (!queue) return;
         queue.innerHTML = '';
 
-        queueImages.forEach(img => {
+        // Filtriamo le immagini in base alla cartella selezionata (Crumble Menu)
+        let displayImages = queueImages;
+        if (currentFolderFilter) {
+            displayImages = displayImages.filter(img => (img.parent_name || "Senza Cartella") === currentFolderFilter);
+        }
+
+        // Applichiamo anche il filtro Radar se attivo
+        if (radarFilterIds) {
+            displayImages = displayImages.filter(img => radarFilterIds.includes(img.id));
+        }
+
+        countBadge.innerText = displayImages.length;
+        
+        displayImages.forEach(img => {
             const isSelected = selectedAssets.some(x => String(x.id) === String(img.id));
             const item = document.createElement('div');
-            item.style.cssText = `aspect-ratio:1; border-radius:8px; overflow:hidden; background:#000; cursor:pointer; border:2px solid ${isSelected ? 'var(--accent-gold)' : 'transparent'}; position:relative;`;
+            item.style.cssText = `aspect-ratio:1; border-radius:8px; overflow:hidden; background:#000; cursor:pointer; border:2px solid ${isSelected ? 'var(--accent-gold)' : 'rgba(255,255,255,0.1)'}; position:relative;`;
             item.onclick = () => toggleQueueSelection(img);
             item.innerHTML = `
-                <img src="/api/drive/proxy/${img.id}" style="width:100%; height:100%; object-fit:cover; opacity:${isSelected ? '1' : '0.6'};">
+                <img src="/api/drive/proxy/${img.id}" style="width:100%; height:100%; object-fit:cover; opacity:${isSelected ? '1' : '0.7'};">
                 ${isSelected ? '<div style="position:absolute; top:5px; right:5px; background:var(--accent-gold); color:#000; border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; font-weight:900;"><i class="ph ph-check"></i></div>' : ''}
             `;
             queue.appendChild(item);
         });
 
         updateWorkboard();
+    }
+
+    async function loadBatchToWorkboard(batch) {
+        selectedAssets = [...batch.images];
+        updateWorkboard();
+        
+        // Bonus Fase 3 (Anticipato): Tentativo di auto-ricerca
+        const firstName = batch.images[0].name.toLowerCase();
+        // Se il nome contiene indizi, proviamo a cercare
+        const cleanName = batch.images[0].name.split('_')[0].split('-')[0];
+        if (cleanName.length > 3) {
+            handleProductSearch(cleanName);
+        }
     }
 
     function toggleQueueSelection(img) {
@@ -239,7 +389,8 @@
         const list = document.getElementById('product-candidates-list');
         list.innerHTML = '<div style="text-align:center; padding:20px;"><i class="ph ph-circle-notch ph-spin"></i></div>';
         
-        lastSearchResults = await DarkroomCore.fetchProducts(query, false);
+        // Nel Matching Hub vogliamo vedere SOLO i prodotti che non hanno ancora immagini
+        lastSearchResults = await DarkroomCore.fetchProducts(query, true);
         renderProductResults();
     }
 
@@ -352,13 +503,13 @@
                 const associatedIds = selectedAssets.map(x => x.id);
                 queueImages = queueImages.filter(img => !associatedIds.includes(img.id));
                 selectedAssets = [];
-                selectedProductId = null;
-                document.getElementById('matching-actions-area').style.display = 'none';
                 
                 showToast(`Associazione completata! ${associatedIds.length} immagini collegate.`);
-                
+                document.getElementById('matching-actions-area').style.display = 'none';
+
                 // Pulizia risultati di ricerca per evitare che il prodotto 'usato' rimanga visibile
                 lastSearchResults = lastSearchResults.filter(p => p.id !== selectedProductId);
+                selectedProductId = null;
                 document.getElementById('product-search').value = '';
                 renderProductResults(); // Ridisegna la lista immediatamente
                 
@@ -389,5 +540,29 @@
 <style>
 .badge-count { background: var(--accent-gold); color: #000; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; }
 .product-card:hover { background: rgba(255,255,255,0.08); }
+
+/* FOLDER CHIPS */
+.folder-chip {
+    font-size: 0.5rem;
+    font-weight: 800;
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.folder-chip:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+}
+.folder-chip.active {
+    background: var(--accent-gold);
+    color: #000;
+    border-color: var(--accent-gold);
+}
 </style>
 {% endblock %}

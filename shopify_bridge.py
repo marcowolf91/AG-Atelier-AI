@@ -24,6 +24,43 @@ class ShopifyBridge:
         else:
             self.api_url = None
 
+    async def refresh_token(self):
+        """Rigenera l'Access Token usando Client ID e Secret (Grant: client_credentials)."""
+        from auth_manager import get_raw_api_key, save_api_key
+        client_id = get_raw_api_key("shopify_client_id")
+        client_secret = get_raw_api_key("shopify_client_secret")
+        
+        if not client_id or not client_secret or not self.url:
+            add_bridge_log("❌ Impossibile rigenerare token: Credenziali Client mancanti.")
+            return False
+
+        add_bridge_log("⚠️ Token attuale invalido (401). Tentativo di rigenerazione via Client Credentials...")
+        
+        clean_url = self.url.replace('https://', '').replace('http://', '').rstrip('/')
+        refresh_url = f"https://{clean_url}/admin/oauth/access_token"
+        
+        payload = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "client_credentials"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                resp = await client.post(refresh_url, json=payload)
+                if resp.status_code == 200:
+                    new_token = resp.json().get("access_token")
+                    if new_token:
+                        self.token = new_token
+                        save_api_key("shopify_token", new_token)
+                        add_bridge_log("✅ Access Token ottenuto con successo via Client Credentials.")
+                        return True
+                add_bridge_log(f"❌ Fallimento rigenerazione token ({resp.status_code}): {resp.text}")
+                return False
+            except Exception as e:
+                add_bridge_log(f"❌ Eccezione durante rigenerazione token: {str(e)}")
+                return False
+
     async def check_connection(self):
         if not self.token or not self.api_url: return False, "Credenziali mancanti"
         query = "{ shop { name } }"
@@ -43,10 +80,10 @@ class ShopifyBridge:
         local_results = []
         shopify_results = []
         
-        # 1. Recupero prodotti locali pronti (Priorità a quelli CON FOTO)
         db = SessionLocal()
         try:
-            ready_items = db.query(Product).filter(Product.status == ProductStatus.Ready).all()
+            # Includiamo sia Ready che MATCHED (prodotti appena associati con foto)
+            ready_items = db.query(Product).filter(Product.status.in_([ProductStatus.Ready, ProductStatus.MATCHED])).all()
             for p in ready_items:
                 sku = p.sku or f"SKU-{p.id}"
                 img = None
@@ -77,11 +114,11 @@ class ShopifyBridge:
             
         finally: db.close()
 
-        # 2. Recupero prodotti reali da Shopify
+        # 2. Recupero prodotti reali da Shopify (Limite aumentato a 250 per sync profonda)
         if self.token and self.api_url:
             query = """
             query {
-              products(first: 50) {
+              products(first: 250) {
                 edges {
                   node {
                     id title status totalInventory productType
@@ -93,25 +130,62 @@ class ShopifyBridge:
             }
             """
             headers = {"X-Shopify-Access-Token": self.token, "Content-Type": "application/json"}
-            async with httpx.AsyncClient(timeout=20.0) as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 try:
                     resp = await client.post(self.api_url, headers=headers, json={"query": query})
+                    
+                    if resp.status_code == 401:
+                        if await self.refresh_token():
+                            headers["X-Shopify-Access-Token"] = self.token
+                            resp = await client.post(self.api_url, headers=headers, json={"query": query})
+
                     if resp.status_code == 200:
                         edges = resp.json().get("data", {}).get("products", {}).get("edges", [])
                         existing_skus = {lr["sku"] for lr in local_results}
+                        
+                        db = SessionLocal()
+                        synced_count = 0
+                        
                         for edge in edges:
                             node = edge["node"]
                             v = node["variants"]["edges"][0]["node"] if node["variants"]["edges"] else {"sku": "N/A", "price": "0.00"}
-                            if v["sku"] in existing_skus: continue # Evita duplicati se già nei locali
+                            sku_val = v.get("sku") or ""
+                            
+                            # Logica di Sincronizzazione Inversa (Shopify -> DB Locale)
+                            # Segnamo come Published solo se il prodotto ha almeno un'immagine su Shopify
+                            has_shopify_images = node["images"]["edges"] != []
+                            
+                            target_p = None
+                            if sku_val and sku_val.startswith("SKU-"):
+                                try:
+                                    pid = int(sku_val.replace("SKU-", ""))
+                                    target_p = db.query(Product).filter(Product.id == pid).first()
+                                except: pass
+                            
+                            if not target_p and sku_val and sku_val != "N/A":
+                                target_p = db.query(Product).filter(Product.sku == sku_val).first()
+                            
+                            if target_p and has_shopify_images and target_p.status != ProductStatus.Published:
+                                target_p.status = ProductStatus.Published
+                                synced_count += 1
+                                # add_bridge_log(f"🔄 Auto-Sync: {sku_val} rilevato su Shopify. Stato aggiornato a Published.")
+
+                            if sku_val in existing_skus: continue # Evita duplicati nella lista UI
                             
                             img = node["images"]["edges"][0]["node"]["url"] if node["images"]["edges"] else None
                             shopify_results.append({
-                                "id": node["id"], "title": node["title"], "sku": v["sku"],
+                                "id": node["id"], "title": node["title"], "sku": sku_val,
                                 "price": v["price"], "status": node["status"], "image": img,
                                 "inventory": node["totalInventory"], "product_type": node["productType"] or "Scarpe",
                                 "is_local_published": True
                             })
-                except: pass
+                        
+                        if synced_count > 0:
+                            db.commit()
+                            add_bridge_log(f"✅ Sincronizzazione Stati: {synced_count} prodotti marcati come Published (rilevati su Shopify).")
+                        db.close()
+                except Exception as e:
+                    add_bridge_log(f"❌ Errore durante Sync Shopify -> PIM: {str(e)}")
 
         return local_results + shopify_results
 
@@ -141,6 +215,10 @@ class ShopifyBridge:
                         })
 
             # 2. Costruzione Payload REST Atomico
+            if not images_payload:
+                add_bridge_log(f"⚠️ [Safety Block] Annullata pubblicazione per {sku}: Nessuna immagine valida recuperata da Drive.")
+                return False
+                
             rest_url = self.api_url.replace("/graphql.json", "/products.json")
             product_payload = {
                 "product": {
@@ -163,6 +241,12 @@ class ShopifyBridge:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 headers = {"X-Shopify-Access-Token": self.token, "Content-Type": "application/json"}
                 resp = await client.post(rest_url, headers=headers, json=product_payload)
+                
+                if resp.status_code == 401:
+                    if await self.refresh_token():
+                        # Riprova con il nuovo token
+                        headers["X-Shopify-Access-Token"] = self.token
+                        resp = await client.post(rest_url, headers=headers, json=product_payload)
                 
                 if resp.status_code in [200, 201]:
                     res_json = resp.json()
@@ -225,7 +309,20 @@ class ShopifyBridge:
             from google_auth import get_credentials
             from googleapiclient.discovery import build
             import base64
-            drive_service = build('drive', 'v3', credentials=get_credentials())
+            
+            creds = get_credentials()
+            if not creds:
+                add_bridge_log(f"❌ Drive Error: Credenziali mancanti per file {file_id}")
+                return None
+                
+            drive_service = build('drive', 'v3', credentials=creds)
             content = drive_service.files().get_media(fileId=file_id).execute()
+            
+            if not content:
+                add_bridge_log(f"❌ Drive Error: Contenuto vuoto per file {file_id}")
+                return None
+                
             return base64.b64encode(content).decode('utf-8')
-        except: return None
+        except Exception as e:
+            add_bridge_log(f"❌ Drive Exception per {file_id}: {str(e)}")
+            return None

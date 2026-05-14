@@ -306,11 +306,14 @@ function renderCatalog(products) {
         let rowStyle = '';
 
         if (p.status === 'LOCAL ONLY') {
-            checkboxHtml = `<input type="checkbox" class="product-checkbox" value="${safeSku}" data-title="${safeTitle.replace(/"/g, '&quot;')}" data-price="${p.price || 0}" onchange="updateBatchToolbar()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-gold);">`;
+            checkboxHtml = `<input type="checkbox" class="product-checkbox" value="${safeSku}" data-product-id="${p.id}" data-title="${safeTitle.replace(/"/g, '&quot;')}" data-price="${p.price || 0}" onchange="updateBatchToolbar()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-gold);">`;
+            let publishDisabled = !p.image ? 'disabled opacity:0.5; cursor:not-allowed;' : '';
             actionHtml = `
-                <button onclick="handleImport('${safeSku}', '${safeTitle.replace(/'/g, "\\'")}', ${p.price || 0}, '${syncStatus}')" class="btn attr-primary" style="padding: 8px 16px; font-size: 0.75rem; font-weight: 700;">
+                <button onclick="handleImport('${safeSku}', '${safeTitle.replace(/'/g, "\\'")}', ${p.price || 0}, '${syncStatus}', ${p.id})" class="btn attr-primary" ${publishDisabled} style="padding: 8px 16px; font-size: 0.75rem; font-weight: 700;">
                     <i class="ph ph-upload-simple"></i> Pubblica
-                </button>`;
+                </button>
+                ${!p.image ? '<div style="font-size:0.55rem; color:#ff4444; margin-top:4px; font-weight:800; text-align:center;">MANCANO FOTO</div>' : ''}
+            `;
             
             // Highlights local products explicitly so they stand out
             rowStyle = 'background: rgba(212,175,55,0.05); border: 1px solid rgba(212,175,55,0.2);';
@@ -411,12 +414,13 @@ async function importSelectedBatch() {
         const sku = cb.value;
         const title = cb.getAttribute('data-title');
         const price = parseFloat(cb.getAttribute('data-price')) || 0;
+        const product_id = cb.getAttribute('data-product-id');
         
         try {
             const res = await fetch('/api/shopify/publish', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({sku, title, price, overwrite: false})
+                body: JSON.stringify({sku, title, price, product_id, overwrite: false})
             });
             const data = await res.json();
             if(data.status === 'ok') successCount++;
@@ -433,7 +437,7 @@ async function importSelectedBatch() {
     refreshShopifyCatalog();
 }
 
-function handleImport(sku, title, price, status) {
+function handleImport(sku, title, price, status, productId) {
     if(status === 'divergent') {
         document.getElementById('triage-sku-val').value = sku;
         document.getElementById('triage-shop-title').innerText = title;
@@ -443,16 +447,16 @@ function handleImport(sku, title, price, status) {
         document.getElementById('triage-modal').style.display = 'flex';
     } else {
         showToast(`📦 Importazione di ${sku} in corso...`);
-        executeImport(sku, title, price);
+        executeImport(sku, title, price, false, productId);
     }
 }
 
-async function executeImport(sku, title, price, overwrite = false) {
+async function executeImport(sku, title, price, overwrite = false, productId = null) {
     try {
         const res = await fetch('/api/shopify/publish', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({sku, title, price, overwrite})
+            body: JSON.stringify({sku, title, price, overwrite, product_id: productId})
         });
         const data = await res.json();
         if(data.status === 'ok') {
