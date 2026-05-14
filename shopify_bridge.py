@@ -168,19 +168,43 @@ class ShopifyBridge:
                     res_json = resp.json()
                     inv_item_id = res_json["product"]["variants"][0]["inventory_item_id"]
                     
-                    # Recupero dinamico location e set scorta
+                    # Recupero dinamico location (Cerchiamo NAPOLI)
                     loc_url = self.api_url.replace("/graphql.json", "/locations.json")
                     l_resp = await client.get(loc_url, headers=headers)
                     locations = l_resp.json().get("locations", [])
+                    
+                    target_loc_id = None
                     if locations:
-                        loc_id = locations[0]["id"]
+                        # Cerchiamo la sede di Napoli nel nome
+                        for loc in locations:
+                            if "napoli" in loc.get("name", "").lower():
+                                target_loc_id = loc["id"]
+                                break
+                        
+                        # Se non troviamo "Napoli", usiamo la prima disponibile
+                        if not target_loc_id:
+                            target_loc_id = locations[0]["id"]
+                            add_bridge_log(f"⚠️ Sede 'Napoli' non trovata. Uso la location predefinita: {locations[0].get('name')}")
+                        else:
+                            add_bridge_log(f"📍 Sede Napoli individuata (ID: {target_loc_id})")
+
+                        # 1. Connessione della variante alla location (necessario se 'unflaggato')
+                        connect_url = self.api_url.replace("/graphql.json", "/inventory_levels/connect.json")
+                        await client.post(connect_url, headers=headers, json={
+                            "location_id": target_loc_id,
+                            "inventory_item_id": inv_item_id,
+                            "relocate_if_necessary": True
+                        })
+                        add_bridge_log(f"🔗 Sede {target_loc_id} connessa alla variante.")
+
+                        # 2. Set Inventory level (Set a 1 come richiesto)
                         inv_set_url = self.api_url.replace("/graphql.json", "/inventory_levels/set.json")
                         await client.post(inv_set_url, headers=headers, json={
-                            "location_id": loc_id,
+                            "location_id": target_loc_id,
                             "inventory_item_id": inv_item_id,
                             "available": 1
                         })
-                        add_bridge_log(f"✅ Inventario impostato a 1 sulla location {loc_id}")
+                        add_bridge_log(f"✅ Giacenza 1 impostata per la sede di Napoli(i).")
 
                     p.status = ProductStatus.Published
                     db.commit()
