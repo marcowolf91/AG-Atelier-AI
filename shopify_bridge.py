@@ -196,18 +196,31 @@ class ShopifyBridge:
         """
         db = SessionLocal()
         try:
+            if not sku:
+                add_bridge_log("❌ Errore: SKU mancante per la pubblicazione.")
+                return False
+                
             p = db.query(Product).filter(Product.id == int(sku.replace("SKU-", ""))).first() if sku.startswith("SKU-") else db.query(Product).filter(Product.sku == sku).first()
+
             if not p: return False
             
+            # --- DOPPIO CONTROLLO DI SICUREZZA ---
+            if p.status == ProductStatus.Published:
+                add_bridge_log(f"ℹ️ [Skip] {sku} è già segnato come Pubblicato. Uso il sync per confermare.")
+                return True # Consideriamolo successo visto che è già su Shopify
+
             add_bridge_log(f"🚀 [REST Atomico] Pubblicazione professionale per {sku}...")
+
             
             # 1. Preparazione Immagini Base64 (TUTTE)
             images_payload = []
             if p.matched_images_json:
                 imgs = json.loads(p.matched_images_json)
                 add_bridge_log(f"📸 Preparazione di {len(imgs)} immagini per {sku}...")
-                for drive_id in imgs:
+                for item in imgs:
+                    drive_id = item["id"] if isinstance(item, dict) else item
                     b64 = await self._get_drive_image_base64(drive_id)
+
                     if b64:
                         images_payload.append({
                             "attachment": b64,

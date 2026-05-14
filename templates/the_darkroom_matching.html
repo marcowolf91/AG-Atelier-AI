@@ -8,9 +8,15 @@
     <!-- COL 1: QUEUE -->
     <div class="glass-panel" style="padding: 16px; display: flex; flex-direction: column;">
         <div style="font-size: 0.65rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
-            <span>Coda Matching</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>Coda Matching</span>
+                <button onclick="hardRefreshAssets()" class="btn glass-btn" style="width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%;" title="Aggiorna Assets da Drive">
+                    <i class="ph ph-arrows-clockwise" id="refresh-icon"></i>
+                </button>
+            </div>
             <span id="match-queue-count" class="badge-count">0</span>
         </div>
+
         <div id="folder-chips-container" style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; padding: 6px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); max-height: 100px; overflow-y: auto;">
             <!-- Populated via JS -->
         </div>
@@ -241,6 +247,24 @@
         const btn = document.getElementById('btn-reset-radar');
         if (btn) btn.remove();
         renderQueue();
+    }
+
+    async function hardRefreshAssets() {
+        const icon = document.getElementById('refresh-icon');
+        icon.classList.add('ph-spin');
+        showToast("🔄 Scansione Google Drive in corso...");
+        
+        try {
+            // Chiamata con refresh=true per forzare l'indicizzazione
+            queueImages = await DarkroomCore.fetchImages(true);
+            renderQueue();
+            updateAutoMatchBar();
+            showToast("✅ Assets aggiornati!");
+        } catch (e) {
+            showToast("Errore durante l'aggiornamento.", "error");
+        } finally {
+            icon.classList.remove('ph-spin');
+        }
     }
 
     async function runMassAssociateByRow() {

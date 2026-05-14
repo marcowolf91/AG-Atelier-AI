@@ -76,9 +76,11 @@
 
             <!-- Visual & Description Split -->
             <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; height: 320px; margin-bottom: 24px;">
-                <div class="visual-pane glass-panel" style="padding:0; overflow:hidden; background: #000; position:relative;">
+                <div class="visual-pane glass-panel" id="cover-container-{{ item.id }}" style="padding:0; overflow:hidden; background: #000; position:relative;">
                     {% if imgs and imgs|length > 0 %}
-                        <img src="/api/drive/proxy/{{ imgs[0] }}" style="width: 100%; height: 100%; object-fit: contain; opacity: 0.9;">
+                        {% set cover_item = imgs[0] %}
+                        {% set cover_id = cover_item.id if cover_item is mapping else cover_item %}
+                        <img src="/api/drive/proxy/{{ cover_id }}" id="main-cover-{{ item.id }}" style="width: 100%; height: 100%; object-fit: contain; opacity: 0.9;">
                         <div style="position:absolute; top:10px; left:10px; background:var(--accent-gold); color:#000; padding:2px 8px; border-radius:4px; font-size:0.55rem; font-weight:800; letter-spacing:1px;">COVER (FOTO 1)</div>
                     {% else %}
                         <div style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; color:#333;">
@@ -97,20 +99,18 @@
                         <div contenteditable="true" id="desc-text-{{ item.id }}" style="color: rgba(255,255,255,0.7); flex: 1; overflow-y: auto; font-style: italic; white-space: pre-wrap; outline: none; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.02);">{{ item.ai_description_it or 'In attesa di generazione... Clicca "GENERA ORA" per iniziare.' }}</div>
                     </div>
                     
-                    <div style="display: flex; gap: 8px; height: 80px; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
-                        {% set gallery_imgs = item.matched_images_json|from_json if item.matched_images_json else [] %}
-                        {% for i in range(1, gallery_imgs|length) %}
-                            {% set current_thumb = gallery_imgs[i] %}
-                            {% if current_thumb and current_thumb|length > 10 %}
-                            <div class="glass-panel" style="flex: 0 0 80px; width: 80px; height: 80px; padding: 0; overflow: hidden; position:relative; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05);">
-                                <img src="/api/drive/proxy/{{ current_thumb }}" style="width: 100%; height: 100%; object-fit: cover;">
-                                <div style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.5rem; padding:1px 4px; border-radius:2px;">{{ i + 1 }}</div>
+                    <div id="gallery-sortable-{{ item.id }}" class="sortable-gallery" style="display: flex; gap: 8px; height: 80px; width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
+                        {% for img_item in imgs %}
+                            {% set current_id = img_item.id if img_item is mapping else img_item %}
+                            <div class="gallery-item-sortable glass-panel" data-id="{{ current_id }}" style="flex: 0 0 80px; width: 80px; height: 80px; padding: 0; overflow: hidden; position:relative; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); cursor: grab;">
+                                <img src="/api/drive/proxy/{{ current_id }}" style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;">
+                                <div class="img-number" style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.6); color:#fff; font-size:0.5rem; padding:1px 4px; border-radius:2px;">{{ loop.index }}</div>
                             </div>
-                            {% endif %}
                         {% endfor %}
                     </div>
                 </div>
             </div>
+
 
             <!-- Editor Section: Technical Data -->
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
@@ -224,11 +224,37 @@
 @keyframes slideUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
     let currentIndex = 0;
     const totalCards = {{ products|length }};
     
+    // Inizializzazione SortableJS per ogni card
+    function initSortable() {
+        document.querySelectorAll('.sortable-gallery').forEach(el => {
+            const productId = el.id.replace('gallery-sortable-', '');
+            new Sortable(el, {
+                animation: 150,
+                ghostClass: 'glass-panel-ghost',
+                onEnd: function (evt) {
+                    // Aggiorniamo la cover principale quando l'ordine cambia
+                    const firstItem = el.querySelector('.gallery-item-sortable');
+                    if (firstItem) {
+                        const newId = firstItem.getAttribute('data-id');
+                        const coverImg = document.getElementById(`main-cover-${productId}`);
+                        if (coverImg) coverImg.src = `/api/drive/proxy/${newId}`;
+                    }
+                    // Ricalcoliamo i numerini sulle thumbnail
+                    el.querySelectorAll('.img-number').forEach((num, idx) => {
+                        num.innerText = idx + 1;
+                    });
+                }
+            });
+        });
+    }
+
     // Persistenza scelta modello
+
     function getSelectedModel() {
         return localStorage.getItem('atelier_ai_model') || 'gemini';
     }
@@ -249,7 +275,9 @@
 
     // Inizializzazione modelli al caricamento
     document.addEventListener('DOMContentLoaded', () => {
+        initSortable();
         const savedModel = getSelectedModel();
+
         const selects = document.querySelectorAll('select[id^="model-"]');
         
         selects.forEach(select => {
@@ -315,6 +343,9 @@
                 return;
             }
 
+            const gallery = document.getElementById(`gallery-sortable-${productId}`);
+            const imagesOrder = Array.from(gallery.querySelectorAll('.gallery-item-sortable')).map(el => el.getAttribute('data-id'));
+
             const payload = {
                 seo_title: seoTitle,
                 tags: document.getElementById(`tags-${productId}`).value,
@@ -322,14 +353,22 @@
                 material: document.getElementById(`mat-${productId}`).value,
                 color: document.getElementById(`col-${productId}`).value,
                 dimensions: document.getElementById(`dim-${productId}`).value,
-                ai_description_it: document.getElementById(`desc-text-${productId}`).innerText
+                ai_description_it: document.getElementById(`desc-text-${productId}`).innerText,
+                images_order: imagesOrder
             };
             fetch(`/api/lab/certify/${productId}`, {
+
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             }).then(() => showToast("✨ Prodotto Certificato!"));
+        } else {
+            // Logica SCARTA: Resettiamo le associazioni ma manteniamo i dati tecnici
+            fetch(`/api/lab/reject/${productId}`, {
+                method: 'POST'
+            }).then(() => showToast("🗑️ Foto Scollegate. Prodotto salvato in Draft per ri-associazione.", "info"));
         }
+
 
         setTimeout(() => {
             currentIndex++;

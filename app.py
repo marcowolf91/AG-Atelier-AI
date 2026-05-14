@@ -921,34 +921,49 @@ def get_darkroom_images(refresh: bool = False, db: Session = Depends(get_db)):
                 if row[0]:
                     ids = json.loads(row[0])
                     if isinstance(ids, list):
-                        for fid in ids: associated_ids.add(fid)
+                        for item in ids:
+                            if isinstance(item, dict) and "id" in item:
+                                associated_ids.add(item["id"])
+                            elif isinstance(item, str):
+                                associated_ids.add(item)
+
             except: pass
     except Exception as e:
         print(f"⚠️ Errore lettura associazioni DB: {e}")
 
     valid_images = []
     import re
-    for f in all_files:
-        if f['mimeType'].startswith('application/'): continue
-        f_copy = f.copy()
-        f_copy['associated'] = f['id'] in associated_ids
-        
-        # LOGICA AUTO-MATCH RIGA + CONTESTO CARTELLA
-        # Cerchiamo un numero all'inizio del file (es: "14_...", "14 ...", "14.jpg")
-        row_match = re.match(r'^(\d+)', f['name'])
-        if row_match:
-            f_copy['suggested_row'] = int(row_match.group(1))
-            # Includiamo il nome della cartella per la disambiguazione
-            # (get_darkroom_images dovrebbe già avere info sulla cartella o possiamo dedurla)
-            f_copy['folder_context'] = f.get('parent_name', '').upper()
-        else:
-            f_copy['suggested_row'] = None
-            f_copy['folder_context'] = None
+    try:
+        for f in all_files:
+            if f['mimeType'].startswith('application/'): continue
+            f_copy = f.copy()
+            f_copy['associated'] = f['id'] in associated_ids
             
-        valid_images.append(f_copy)
-        # Popoliamo la cache dei thumbnail per velocizzare il proxy
-        if f.get('thumbnailLink'):
-            THUMBNAIL_CACHE[f['id']] = f['thumbnailLink']
+            # LOGICA AUTO-MATCH RIGA + CONTESTO CARTELLA
+            row_match = re.search(r'^(\d+)[_\-\s.]', f['name'])
+            if not row_match:
+                row_match = re.search(r'[_\-\s](\d+)[_\-\s.]', f['name'])
+
+                
+            if row_match:
+                try:
+                    f_copy['suggested_row'] = int(row_match.group(1))
+                    f_copy['folder_context'] = (f.get('parent_name') or "").upper()
+                except:
+                    f_copy['suggested_row'] = None
+                    f_copy['folder_context'] = None
+            else:
+                f_copy['suggested_row'] = None
+                f_copy['folder_context'] = None
+                
+            valid_images.append(f_copy)
+            if f.get('thumbnailLink'):
+                THUMBNAIL_CACHE[f['id']] = f['thumbnailLink']
+    except Exception as e:
+        with open("scratch/drive_debug.log", "a") as f_log:
+            f_log.write(f"❌ ERROR IN DARKROOM LOOP: {str(e)}\n")
+        raise e
+
             
     valid_images.sort(key=lambda x: x.get('name', '').lower(), reverse=True)
     return valid_images
@@ -1426,7 +1441,13 @@ async def publish_shopify_product(request: Request, db: Session = Depends(get_db
     # Lookup product
     product = None
     if product_id:
+        # Gestione ID in formato GID (es: gid://shopify/Product/Local-2)
+        if isinstance(product_id, str) and "Local-" in product_id:
+            try:
+                product_id = int(product_id.split("Local-")[-1])
+            except: pass
         product = db.query(Product).filter(Product.id == product_id).first()
+
     elif sku and sku != "N/A":
         product = db.query(Product).filter(Product.sku == sku).first()
     
@@ -2115,7 +2136,7 @@ async def clone_drive_structure(request: Request):
 
 @app.post("/api/drive/sync")
 async def sync_drive_images(db: Session = Depends(get_db)):
-    """Matching Intelligente ad Alta Efficienza (SmartMapper)."""
+    """Matching Intelligente ad Alta Efficienza (SmartMapper) - Sheet Aware."""
     import google_auth
     creds = google_auth.get_credentials()
     if not creds: return {"error": "non_auth"}
@@ -2124,49 +2145,70 @@ async def sync_drive_images(db: Session = Depends(get_db)):
         from googleapiclient.discovery import build
         service = build('drive', 'v3', credentials=creds)
         config = get_settings()
-        root_folder_id = config.get("drive_images_root_id")
+        
+        # Supportiamo sia la vecchia che la nuova chiave di configurazione
+        root_folder_id = config.get("drive_images_root_id") or config.get("folder_id")
         
         if not root_folder_id:
-            return {"error": "Missing drive_images_root_id in settings"}
+            return {"error": "Missing drive_images_root_id or folder_id in settings"}
             
-        add_log(f"📡 [SmartMapper] Indicizzazione Drive in corso (Folder: {root_folder_id})...")
+        add_log(f"📡 [SmartMapper] Avvio Indicizzazione Contestuale (Root: {root_folder_id})")
         
-        # 1. Scansione Massiva Unica (Recursiva 1-level + root)
-        drive_inventory = []
-        page_token = None
+        # 1. Mappatura dei Contesti (Cartelle dei Fogli)
+        # Cerchiamo tutte le cartelle direttamente sotto la root
+        q_root = f"'{root_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed=false"
+        res_root = service.files().list(q=q_root, fields="files(id, name)").execute()
+        sheet_folders = {f['name'].lower().strip(): f['id'] for f in res_root.get('files', [])}
         
-        # Recuperiamo cartelle e immagini
-        while True:
-            q = f"'{root_folder_id}' in parents and trashed=false"
-            res = service.files().list(
-                q=q, 
-                fields="nextPageToken, files(id, name, mimeType, thumbnailLink, webViewLink)",
-                pageSize=1000, 
-                pageToken=page_token,
-                supportsAllDrives=True, 
-                includeItemsFromAllDrives=True
-            ).execute()
-            
-            drive_inventory.extend(res.get('files', []))
-            page_token = res.get('nextPageToken')
-            if not page_token: break
-
-        # 2. Matching Granulare in Memoria
+        # Recuperiamo anche i file sciolti nella root per i prodotti senza foglio specifico
+        q_files = f"'{root_folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+        res_files = service.files().list(q=q_files, fields="files(id, name, thumbnailLink, webViewLink, mimeType)").execute()
+        root_inventory = res_files.get('files', [])
+        
+        # 2. Recupero Prodotti e Raggruppamento
         products = db.query(Product).all()
         matched_count = 0
         
+        # Cache per gli inventari delle sottocartelle (per evitare doppie chiamate API per lo stesso foglio)
+        folder_inventory_cache = {}
+
         for p in products:
             # PROTEZIONE: Non sovrascrivere mai associazioni manuali o già esistenti
             if p.matched_images_json and p.matched_images_json != "[]" and p.matched_images_json != "":
                 continue
                 
-            # Creiamo un set di parole chiave dal prodotto
+            # Determiniamo lo scope di ricerca
+            target_inventory = []
+            sheet_name = p.source_sheet.lower().strip() if p.source_sheet else None
+            
+            if sheet_name and sheet_name in sheet_folders:
+                # Se abbiamo una cartella per questo foglio, usiamo quella
+                f_id = sheet_folders[sheet_name]
+                if f_id not in folder_inventory_cache:
+                    add_log(f"📂 [SmartMapper] Scansione cartella contestuale: {p.source_sheet}")
+                    # Scansione 1-level della cartella del foglio (immagini e sottocartelle prodotto)
+                    q_sub = f"'{f_id}' in parents and trashed=false"
+                    res_sub = service.files().list(
+                        q=q_sub, 
+                        fields="files(id, name, mimeType, thumbnailLink, webViewLink)",
+                        pageSize=1000
+                    ).execute()
+                    folder_inventory_cache[f_id] = res_sub.get('files', [])
+                
+                target_inventory = folder_inventory_cache[f_id]
+            else:
+                # Fallback ai file sciolti nella root
+                target_inventory = root_inventory
+            
+            if not target_inventory:
+                continue
+
+            # --- LOGICA DI MATCHING ---
             keywords = set()
             if p.brand: keywords.add(p.brand.lower())
             if p.model: keywords.update(p.model.lower().replace('-', ' ').split())
             if p.sku: keywords.add(p.sku.lower())
             
-            # Filtro qualità parole (escludiamo parole comuni e corte)
             stop_words = {"pochette", "borsa", "tracolla", "nera", "nero", "pelle", "media", "piccola", "vintage"}
             keywords = {k for k in keywords if len(k) > 3 and k not in stop_words}
             
@@ -2175,7 +2217,7 @@ async def sync_drive_images(db: Session = Depends(get_db)):
             valid_images = []
             sku_lower = p.sku.lower() if p.sku else None
             
-            for item in drive_inventory:
+            for item in target_inventory:
                 name_norm = item['name'].lower().replace('_', ' ').replace('-', ' ')
                 
                 # Check Intersezione
@@ -2193,6 +2235,14 @@ async def sync_drive_images(db: Session = Depends(get_db)):
                     })
             
             if valid_images:
+                # --- ORDINAMENTO NATURALE ---
+                # Ordiniamo le foto alfanumericamente (es: 1, 2, 10 invece di 1, 10, 2)
+                import re
+                def natural_sort_key(s):
+                    return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
+                
+                valid_images.sort(key=lambda x: natural_sort_key(x["name"]))
+
                 # Se tra i match c'è una cartella, la impostiamo come folder principale
                 primary_folder = next((img for img in valid_images if img.get("type") == "folder"), None)
                 if primary_folder:
@@ -2200,20 +2250,24 @@ async def sync_drive_images(db: Session = Depends(get_db)):
                     p.drive_folder_url = primary_folder.get("link")
                 
                 p.matched_images_json = json.dumps(valid_images)
+
                 p.image_match_score = float(len(valid_images))
                 matched_count += 1
             else:
                 p.matched_images_json = "[]"
                 p.image_match_score = 0.0
-                p.drive_folder_id = None
+                # Non resettiamo drive_folder_id qui per non perdere eventuali info manuali
                 
         db.commit()
         add_log(f"✅ [SmartMapper] Sincronizzazione finita: {matched_count} prodotti mappati.")
         return {"status": "ok", "matched": matched_count}
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         add_log(f"❌ [SmartMapper Error] {str(e)}")
         return {"status": "error", "message": str(e)}
+
 
 @app.get("/api/drive/stats")
 def get_drive_stats(folder_id: str):
@@ -2580,6 +2634,11 @@ async def certify_product(pid: int, request: Request, db: Session = Depends(get_
     item.category = payload.get("category", item.category)
     item.ai_description_it = payload.get("ai_description_it", item.ai_description_it)
     
+    # Aggiornamento ordine immagini (se fornito dalla UI)
+    if "images_order" in payload:
+        item.matched_images_json = json.dumps(payload["images_order"])
+
+    
     # Cambio stato intelligente: 
     # Pubblichiamo solo se tutti i campi fondamentali sono presenti, altrimenti resta in lavorazione (Ready)
     if item.seo_title and item.ai_description_it and item.tags:
@@ -2594,6 +2653,21 @@ async def certify_product(pid: int, request: Request, db: Session = Depends(get_
     db.commit()
     
     print(f"✅ [Certification] Prodotto {item.sku} certificato e pronto per Shopify.")
+    return {"status": "ok"}
+    
+@app.post("/api/lab/reject/{pid}")
+async def reject_product_associations(pid: int, db: Session = Depends(get_db)):
+    """Resetta le associazioni immagini di un prodotto e lo riporta in bozza."""
+    item = db.query(Product).filter(Product.id == pid).first()
+    if not item:
+        return {"status": "error", "message": "Prodotto non trovato"}
+    
+    item.matched_images_json = "[]"
+    item.image_match_score = 0.0
+    item.status = ProductStatus.Draft
+    
+    db.commit()
+    print(f"🗑️ [Rejection] Associazioni resettate per {item.sku or item.id}. Prodotto riportato in Draft.")
     return {"status": "ok"}
 
 @app.post("/api/lab/research/{pid}")
