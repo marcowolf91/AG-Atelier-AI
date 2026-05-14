@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-title">Matching Station <span style="font-size:0.8rem; color:var(--text-secondary); margin-left:10px;">(Research & SEO Hub)</span></div>
 
-<div style="display: grid; grid-template-columns: 240px 1fr 380px; gap: 20px; height: calc(100vh - 180px); min-height: 600px;">
+<div style="display: grid; grid-template-columns: 280px 420px 1fr; gap: 20px; height: calc(100vh - 180px); min-height: 600px;">
     
     <!-- COL 1: QUEUE -->
     <div class="glass-panel" style="padding: 16px; display: flex; flex-direction: column;">
@@ -179,7 +179,25 @@
     function renderFolderFilters() {
         const container = document.getElementById('folder-chips-container');
         if (!container) return;
-        const folders = [...new Set(queueImages.map(img => img.parent_name || "Senza Cartella"))].sort();
+        
+        // Task 1: Ordine prioritario basato su Excel
+        const SHEET_ORDER = [
+            "BORSE DONNA", "POCHETTE", "BORSE UOMO", "BORSE DA VIAGGIO", "ZAINI", 
+            "PICCOLA PELLETTERIA", "PICCOLA PELLETTERIA DONNA", "ABBIGLIAMENTO", 
+            "CALZATURE DONNA", "CALZATURE UOMO"
+        ];
+
+        const folders = [...new Set(queueImages.map(img => img.parent_name || "Senza Cartella"))];
+        
+        // Ordiniamo: prima quelli in SHEET_ORDER, poi gli altri alfabetici
+        folders.sort((a, b) => {
+            const idxA = SHEET_ORDER.indexOf(a.toUpperCase());
+            const idxB = SHEET_ORDER.indexOf(b.toUpperCase());
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.localeCompare(b);
+        });
         
         let html = `<div class="folder-chip ${!currentFolderFilter ? 'active' : ''}" onclick="setFolderFilter(null)">TUTTE</div>`;
         folders.forEach(f => {
@@ -193,6 +211,9 @@
         renderFolderFilters();
         renderQueue();
         updateAutoMatchBar();
+        
+        // Task 3: Aggiorniamo la lista prodotti in base alla sezione
+        handleProductSearch(document.getElementById('product-search').value || '');
     }
 
     let radarFilterIds = null;
@@ -413,8 +434,8 @@
         const list = document.getElementById('product-candidates-list');
         list.innerHTML = '<div style="text-align:center; padding:20px;"><i class="ph ph-circle-notch ph-spin"></i></div>';
         
-        // Nel Matching Hub vogliamo vedere SOLO i prodotti che non hanno ancora immagini
-        lastSearchResults = await DarkroomCore.fetchProducts(query, true);
+        // Task 3: Passiamo il currentFolderFilter come sheet_context
+        lastSearchResults = await DarkroomCore.fetchProducts(query, true, currentFolderFilter || '');
         renderProductResults();
     }
 

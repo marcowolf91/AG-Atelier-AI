@@ -49,14 +49,15 @@ const DarkroomCore = {
     },
 
     // 4. RICERCA PRODOTTI CON CACHE
-    async fetchProducts(query = '', onlyPending = false) {
-        const cacheKey = `${query}_${onlyPending}`;
+    async fetchProducts(query = '', onlyPending = false, sheet = '') {
+        const cacheKey = `${query}_${onlyPending}_${sheet}`;
         if (this.productCache.has(cacheKey)) {
             return this.productCache.get(cacheKey);
         }
 
         try {
-            const res = await fetch(`/api/darkroom/search-products?q=${encodeURIComponent(query)}&only_pending=${onlyPending}`);
+            const url = `/api/darkroom/search-products?q=${encodeURIComponent(query)}&only_pending=${onlyPending}&sheet=${encodeURIComponent(sheet)}`;
+            const res = await fetch(url);
             const products = await res.json();
             this.productCache.set(cacheKey, products);
             return products;
@@ -65,6 +66,8 @@ const DarkroomCore = {
             return [];
         }
     }
+
+
 };
 
 window.DarkroomCore = DarkroomCore;

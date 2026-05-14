@@ -992,19 +992,26 @@ def drive_thumbnail(file_id: str):
         return RedirectResponse(url=f"/api/drive/proxy/{file_id}")
 
 @app.get("/api/darkroom/search-products")
-def darkroom_search_products(q: str = "", only_pending: str = "false", db: Session = Depends(get_db)):
+def darkroom_search_products(q: str = "", only_pending: str = "false", sheet: str = "", db: Session = Depends(get_db)):
 
     try:
         query = db.query(Product)
+        
+        # Filtro per sezione/foglio (Task 3)
+        if sheet:
+            query = query.filter(Product.source_sheet.ilike(sheet))
         
         # Ricerca per parole chiave (AND tra le parole)
         keywords = q.strip().split()
         
         if not keywords: 
-            # Se non ci sono keyword, mostriamo i primi 20 (priorità a quelli senza immagini se only_pending è true)
+            # Se non ci sono keyword, mostriamo i primi 200 se c'è un filtro sheet, altrimenti 20
             if only_pending.lower() == "true":
                 query = query.filter(or_(Product.matched_images_json == None, Product.matched_images_json == '[]', Product.matched_images_json == ''))
-            return query.limit(20).all()
+            
+            limit = 200 if sheet else 20
+            return query.limit(limit).all()
+
         
         conditions = []
         for word in keywords:
