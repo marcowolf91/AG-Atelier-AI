@@ -401,6 +401,22 @@ def get_harvester_batch_details(db: Session = Depends(get_db)):
 def darkroom_convert(request: Request, ids: str = ""):
     return templates.TemplateResponse(request=request, name="the_darkroom_convert.html", context={"file_ids": ids, "active_page": "darkroom_convert"})
 
+@app.post("/api/darkroom/check-associations")
+async def check_image_associations(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    ids = data.get("ids", [])
+    if not ids: return {"associated": []}
+    results = db.execute(text("SELECT matched_images_json FROM products WHERE matched_images_json IS NOT NULL AND matched_images_json != '' AND matched_images_json != '[]'")).all()
+    taken_ids = set()
+    for row in results:
+        try:
+            p_ids = json.loads(row[0])
+            if isinstance(p_ids, list):
+                for pid in p_ids:
+                    if str(pid) in ids: taken_ids.add(str(pid))
+        except: continue
+    return {"associated": list(taken_ids)}
+
 @app.get("/the-darkroom/matching")
 def darkroom_matching(request: Request, ids: str = ""):
     return templates.TemplateResponse(request=request, name="the_darkroom_matching.html", context={"file_ids": ids, "active_page": "darkroom_matching"})
@@ -741,15 +757,26 @@ def darkroom_search_products(q: str = "", only_pending: str = "false", db: Sessi
                     Product.sku.ilike(word_query),
                     Product.id.cast(String).ilike(word_query),
                     Product.category.ilike(word_query),
-                    Product.description.ilike(word_query)
+                    Product.description.ilike(word_query),
+                    Product.color.ilike(word_query),
+                    Product.dimensions.ilike(word_query),
+                    Product.size.ilike(word_query),
+                    Product.material.ilike(word_query)
                 )
             )
         
         if conditions:
             query = query.filter(and_(*conditions))
             
-        # Nota: non filtriamo più forzatamente per matched_images_json se l'utente sta cercando attivamente
-        # Questo permette di trovare prodotti già associati per aggiungere nuove foto.
+        # Filtro di esclusione ultra-affidabile:
+        # Mostriamo solo prodotti con campo immagini NULL o quasi vuoto (es. '', '[]')
+        query = query.filter(
+            or_(
+                Product.matched_images_json == None,
+                func.length(Product.matched_images_json) < 5
+            )
+        )
+        
         return query.limit(50).all()
     except Exception as e:
         print(f"Search Error: {e}")

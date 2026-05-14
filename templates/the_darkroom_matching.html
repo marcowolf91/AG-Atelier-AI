@@ -117,10 +117,29 @@
     async function init() {
         await DarkroomCore.syncDrive(false);
         
-        if (fileIds.length > 0) {
-            queueImages = DarkroomCore.allImages.filter(img => fileIds.includes(img.id));
-            if (queueImages.length < fileIds.length) {
-                const missingIds = fileIds.filter(id => !queueImages.find(img => img.id === id));
+        let targetIds = [...fileIds];
+        
+        // --- FILTRO ANTI-DOPPIONI: Controllo associazioni esistenti ---
+        if (targetIds.length > 0) {
+            try {
+                const checkRes = await fetch('/api/darkroom/check-associations', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ids: targetIds})
+                });
+                const checkData = await checkRes.json();
+                if (checkData.associated && checkData.associated.length > 0) {
+                    const beforeCount = targetIds.length;
+                    targetIds = targetIds.filter(id => !checkData.associated.includes(id));
+                    showToast(`♻️ Rimossi ${beforeCount - targetIds.length} asset già associati in precedenza.`, "info");
+                }
+            } catch(e) { console.error("Assoc check failed", e); }
+        }
+
+        if (targetIds.length > 0) {
+            queueImages = DarkroomCore.allImages.filter(img => targetIds.includes(img.id));
+            if (queueImages.length < targetIds.length) {
+                const missingIds = targetIds.filter(id => !queueImages.find(img => img.id === id));
                 try {
                     const res = await fetch('/api/darkroom/files-by-ids', {
                         method: 'POST',
@@ -132,7 +151,8 @@
                     DarkroomCore.allImages = [...DarkroomCore.allImages, ...directFiles];
                 } catch(e) {}
             }
-        } else {
+        } else if (fileIds.length === 0) {
+            // Caso caricamento generico senza selezione specifica
             queueImages = DarkroomCore.allImages.filter(img => {
                 const name = (img.name || "").toLowerCase();
                 const isJpg = name.endsWith('.jpg') || name.endsWith('.jpeg');
@@ -336,6 +356,11 @@
                 document.getElementById('matching-actions-area').style.display = 'none';
                 
                 showToast(`Associazione completata! ${associatedIds.length} immagini collegate.`);
+                
+                // Pulizia risultati di ricerca per evitare che il prodotto 'usato' rimanga visibile
+                lastSearchResults = lastSearchResults.filter(p => p.id !== selectedProductId);
+                document.getElementById('product-search').value = '';
+                renderProductResults(); // Ridisegna la lista immediatamente
                 
                 if (queueImages.length === 0) {
                     setTimeout(() => {
