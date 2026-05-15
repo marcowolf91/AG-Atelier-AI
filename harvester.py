@@ -82,7 +82,7 @@ class HarvesterEngine:
                         resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": query, "num":3})
                         self.log_api_hit("serper")
                         res_data = resp.json()
-                        snippets = [o['snippet'] for o in res_data.get('organic', [])]
+                        snippets = [o.get('snippet', '') for o in res_data.get('organic', []) if o.get('snippet')]
                         combined = "\n".join(snippets)
                     except: combined = f"{item.brand} {item.model} luxury item"
             
@@ -279,10 +279,17 @@ class HarvesterEngine:
                     is_banned = True
                     break
             
+            # NUOVO: Rimuoviamo brand e materiali dai tag
+            brand_low = item.brand.lower() if item.brand else ""
+            material_low = item.material.lower() if item.material else ""
+            if brand_low in t_low or (material_low and material_low in t_low):
+                is_banned = True
+
             if not is_banned and t_low not in seen:
                 # SPLIT TAG COMPOSTI (es. "borse donna" -> "borse", "donna")
                 # Solo se contengono parole chiave specifiche per evitare di rompere i brand
                 if " " in t_low and any(word in t_low for word in ["borsa", "borse", "scarpe", "scarpa", "abbigliamento", "donna", "uomo"]):
+
                     parts = t_low.split(" ")
                     for p in parts:
                         p_clean = p.strip()
@@ -574,7 +581,7 @@ class HarvesterEngine:
                         resp = await client.post('https://google.serper.dev/search', headers=headers, json={"q": q, "num": 5})
                         self.log_api_hit("serper")
                         if resp.status_code == 200:
-                            all_snippets.extend([o['snippet'] for o in resp.json().get('organic', [])])
+                            all_snippets.extend([o.get('snippet', '') for o in resp.json().get('organic', []) if o.get('snippet')])
             
             combined_facts = "\n".join(list(set(all_snippets)))
             add_log(f"🔎 [Intelligence] Trovati {len(all_snippets)} punti di interesse sul web.")

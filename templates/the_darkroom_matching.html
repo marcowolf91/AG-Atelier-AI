@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-title">Matching Station <span style="font-size:0.8rem; color:var(--text-secondary); margin-left:10px;">(Research & SEO Hub)</span></div>
 
-<div style="display: grid; grid-template-columns: 280px 420px 1fr; gap: 20px; height: calc(100vh - 180px); min-height: 600px;">
+<div style="display: grid; grid-template-columns: 520px 380px 1fr; gap: 20px; height: calc(100vh - 120px); min-height: 700px;">
     
     <!-- COL 1: QUEUE -->
     <div class="glass-panel" style="padding: 16px; display: flex; flex-direction: column;">
@@ -29,7 +29,7 @@
                 ASSOCIA TUTTO ORA
             </button>
         </div>
-        <div id="match-asset-queue" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: flex-start;">
+        <div id="match-asset-queue" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-content: flex-start; padding-right: 5px;">
             <!-- Populated via JS -->
         </div>
         <button onclick="window.location.href='/the-darkroom'" class="btn glass-btn" style="margin-top: 15px; font-size: 0.6rem; width: 100%;">
@@ -60,7 +60,7 @@
             <input type="text" id="product-search" class="glass-input" placeholder="Cerca prodotto..." oninput="handleProductSearch(this.value)" style="padding-left: 35px; height: 40px; font-size: 0.8rem;">
             <i class="ph ph-magnifying-glass" style="position: absolute; left: 12px; top: 12px; color: var(--text-secondary);"></i>
         </div>
-        <div id="product-candidates-list" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; padding-right: 5px; flex-shrink: 0;">
+        <div id="product-candidates-list" style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; padding-right: 5px;">
             <!-- Populated via JS -->
         </div>
         <div id="matching-actions-area" style="padding: 15px; border: 2px solid var(--accent-gold); display: none; background: rgba(184, 146, 64, 0.1); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
@@ -180,19 +180,27 @@
         const container = document.getElementById('folder-chips-container');
         if (!container) return;
         
-        // Task 1: Ordine prioritario basato su Excel
+        // Task 1: Ordine prioritario basato su Excel (Sincronizzato dai tuoi screenshot)
         const SHEET_ORDER = [
             "BORSE DONNA", "POCHETTE", "BORSE UOMO", "BORSE DA VIAGGIO", "ZAINI", 
-            "PICCOLA PELLETTERIA", "PICCOLA PELLETTERIA DONNA", "ABBIGLIAMENTO", 
-            "CALZATURE DONNA", "CALZATURE UOMO"
+            "PICCOLA PELLETTERIA", "PICCOLA PELLETTERIA DONNA", 
+            "ABBIGLIAMENTO UOMO", "ABBIGLIAMENTO DONNA", 
+            "OCCHIALI", "CAPPELLI", "SCARPE UOMO", "SCARPE DONNA"
         ];
 
         const folders = [...new Set(queueImages.map(img => img.parent_name || "Senza Cartella"))];
         
+        // Funzione di normalizzazione per il confronto (es. "BORSE > DONNA" -> "BORSEDONNA")
+        const normalize = (s) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const normalizedOrder = SHEET_ORDER.map(s => normalize(s));
+
         // Ordiniamo: prima quelli in SHEET_ORDER, poi gli altri alfabetici
         folders.sort((a, b) => {
-            const idxA = SHEET_ORDER.indexOf(a.toUpperCase());
-            const idxB = SHEET_ORDER.indexOf(b.toUpperCase());
+            const normA = normalize(a);
+            const normB = normalize(b);
+            const idxA = normalizedOrder.indexOf(normA);
+            const idxB = normalizedOrder.indexOf(normB);
+            
             if (idxA !== -1 && idxB !== -1) return idxA - idxB;
             if (idxA !== -1) return -1;
             if (idxB !== -1) return 1;
@@ -204,7 +212,10 @@
             html += `<div class="folder-chip ${currentFolderFilter === f ? 'active' : ''}" onclick="setFolderFilter('${f}')">${f.toUpperCase()}</div>`;
         });
         container.innerHTML = html;
+        container.style.maxHeight = 'none'; // Rimuoviamo il limite di altezza
+        container.style.overflowY = 'visible';
     }
+
 
     function setFolderFilter(folder) {
         currentFolderFilter = folder;
@@ -444,7 +455,7 @@
         list.innerHTML = '';
         
         lastSearchResults.forEach(p => {
-            if (!p.model) return;
+            // Rimosso il blocco che nascondeva prodotti senza modello
 
             const card = document.createElement('div');
             const isSelected = (selectedProductId === p.id);
@@ -459,7 +470,7 @@
             } catch(e) {}
 
             card.className = 'glass-panel product-card';
-            card.style.cssText = `padding:12px; cursor:pointer; border:1px solid ${isSelected ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)'}; transition:0.2s; position:relative; ${imageCount > 0 ? 'border-left: 3px solid #4CAF50;' : ''}`;
+            card.style.cssText = `padding:10px; cursor:pointer; border:1px solid ${isSelected ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)'}; transition:0.2s; position:relative; ${imageCount > 0 ? 'border-left: 3px solid #4CAF50;' : ''}`;
             card.onclick = () => selectProductForAssociation(p);
             
             card.innerHTML = `
@@ -588,26 +599,28 @@
 
 /* FOLDER CHIPS */
 .folder-chip {
-    font-size: 0.5rem;
-    font-weight: 800;
+    font-size: 0.75rem;
+    font-weight: 700;
     color: var(--text-secondary);
-    padding: 4px 10px;
-    border-radius: 4px;
+    padding: 8px 14px;
+    border-radius: 6px;
     background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
     cursor: pointer;
     transition: all 0.2s;
     text-transform: uppercase;
     white-space: nowrap;
 }
 .folder-chip:hover {
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.1);
     color: #fff;
 }
 .folder-chip.active {
     background: var(--accent-gold);
     color: #000;
     border-color: var(--accent-gold);
+    box-shadow: 0 4px 15px rgba(212,175,55,0.3);
 }
+
 </style>
 {% endblock %}

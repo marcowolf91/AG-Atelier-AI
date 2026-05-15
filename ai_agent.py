@@ -7,27 +7,34 @@ from auth_manager import get_raw_api_key
 
 class AIAgent:
     def __init__(self):
-        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
     async def get_clean_json(self, prompt, model_choice="llama3"):
         """Chiama l'AI e garantisce la restituzione di un oggetto JSON pulito."""
         data = {}
         if model_choice == "gemini":
             api_key = get_raw_api_key("gemini")
-            url = f"{self.gemini_url}?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
             payload = {"contents": [{"parts": [{"text": prompt + "\nRISPONDI SOLO IN JSON."}]}]}
             async with httpx.AsyncClient() as client:
                 resp = await client.post(url, json=payload, timeout=30.0)
                 res_data = resp.json()
+                print(f"DEBUG FULL RESP: {json.dumps(res_data)}")
+                if 'candidates' not in res_data:
+                    print(f"DEBUG AI FULL RESP ERROR: {json.dumps(res_data)}")
+                    return {}
                 try:
                     text_out = res_data['candidates'][0]['content']['parts'][0]['text']
+                    print(f"DEBUG AI RAW RESP: {text_out[:100]}...")
                     data = self.extract_json(text_out)
-                except: data = {}
+                except Exception as e: 
+                    print(f"DEBUG AI ERROR: {e}")
+                    data = {}
         else:
             import ollama_bridge
             real_model = model_choice
             if model_choice == "llama3":
-                real_model = "llama3:latest"
+                real_model = "qwen2.5:7b"
             elif model_choice == "qwen2.5":
                 real_model = "qwen2.5:7b"
                 
@@ -102,34 +109,87 @@ class AIAgent:
         except: return {}
 
     def build_fashion_prompt(self, item):
-        """Costruisce il prompt specifico per la moda con esempi reali (Few-Shot)."""
-        is_regen = bool(item.ai_description_it and len(item.ai_description_it) > 10)
+        """Costruisce il prompt specifico per la moda: 'Straight to the Point' style."""
         brand = item.brand if item.brand else "N/D"
         model = item.model if item.model else "N/D"
+        color = item.color if item.color else "N/D"
+        material = item.material if item.material else "N/D"
+        condition = item.condition_grade if item.condition_grade else "N/D"
+        accessories = item.accessories_included if item.accessories_included else "N/D"
+        dimensions = item.dimensions if item.dimensions else "N/D"
+        size = item.size if item.size else "N/D"
+        hardware = item.hardware_type if item.hardware_type else "N/D"
 
-        if is_regen:
-            style_instruction = f"""
-            STRUTTURA OBBLIGATORIA: Un paragrafo intro di 2 righe, seguito da un elenco puntato con i dati tecnici.
-            """
-        else:
-            style_instruction = f"""
-            STRUTTURA OBBLIGATORIA: Un paragrafo descrittivo di 3 righe, seguito RIGOROSAMENTE da un elenco con i dettagli tecnici.
-            """
-
-        cat_low = (item.category or "").lower()
-        gender_hint = "l'articolo"
-        if "borsa" in cat_low or "pochette" in cat_low or "scarpe" in cat_low or "donna" in cat_low:
-            gender_hint = "la borsa / la calzatura (femminile)"
+        # Mappatura Tag per Shopify Collections
+        sheet_map = {
+            "Borse Donna": "borsa, donna",
+            "Pochette": "pochette, donna",
+            "Borse Uomo": "borsa, uomo",
+            "Borse da Viaggio": "borsa, viaggio",
+            "Zaini": "zaino",
+            "Piccola Pelletteria": "piccola pelletteria, uomo",
+            "Piccola Pelletteria Donna": "piccola pelletteria, donna",
+            "Abbigliamento Uomo": "abbigliamento, uomo",
+            "Abbigliamento Donna": "abbigliamento, donna",
+            "Occhiali": "occhiali",
+            "Cappelli": "cappelli",
+            "Scarpe Uomo": "scarpe, uomo",
+            "Scarpe Donna": "scarpe, donna"
+        }
+        standard_tags = sheet_map.get(item.source_sheet, "")
         
+        # Logica per categorie miste: chiediamo all'IA di aggiungere donna/uomo se manca
+        gender_inference = ""
+        if "donna" not in standard_tags and "uomo" not in standard_tags:
+            gender_inference = "Analizza il prodotto e aggiungi il tag 'donna' o 'uomo' (o entrambi se unisex) in base al genere dell'articolo."
+
+        if standard_tags:
+            standard_tags += ", novita"
+        
+        # Istruzioni di stile ferree
+        style_rules = f"""
+        REGOLE DI SCRITTURA (ULTRA-MINIMAL):
+        RISPONDI ESCLUSIVAMENTE IN JSON CON QUESTA STRUTTURA:
+        {{
+          "seo_title": "Titolo in Title Case",
+          "introduzione": "Massimo 1 riga elegante",
+          "punti_elenco": ["Dato 1", "Dato 2", ...]
+        }}
+        
+        1. INTRODUZIONE: Sii naturale (es. 'Questa Celine è in ottime condizioni.').
+        2. PUNTI ELENCO: Inserisci solo Condizioni, Corredo, Colore, Materiale, Hardware, Dimensioni. Ometti se N/D.
+        3. TAG: {standard_tags}. {gender_inference}
+        """
+
+
+
+
+
+
+
+
+
+
         full_prompt = f"""
-        # ISTRUZIONI PER CATALOGO DI LUSSO
-        DATI PRODOTTO: 
-        - Titolo Attuale: {item.seo_title or 'N/D'}
+        # TASK: Scrittore per Catalogo Luxury Second-Hand
+        Genera un JSON con 'seo_title', 'tags' e 'ai_description_it' per questo prodotto.
+
+        DATI MASTER (DA USARE RIGOROSAMENTE):
+        - Titolo SEO: {item.seo_title or 'N/D'}
         - Brand: {brand}
         - Modello: {model}
-        - Materiale: {item.material or 'N/D'}
-        
-        ## TASK: Genera un JSON con 'seo_title', 'tags' e 'ai_description_it'.
-        {style_instruction}
+        - Colore: {color}
+        - Materiale: {material}
+        - Condizioni: {condition}
+        - Corredo/Accessori: {accessories}
+        - Hardware: {hardware}
+        - Dimensioni: {dimensions}
+        - Misura/Taglia: {size}
+
+
+        {style_rules}
+
+        LINGUA: Italiano.
         """
         return full_prompt
+

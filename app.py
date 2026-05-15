@@ -997,20 +997,23 @@ def darkroom_search_products(q: str = "", only_pending: str = "false", sheet: st
     try:
         query = db.query(Product)
         
-        # Filtro per sezione/foglio (Task 3)
+        # Filtro per sezione/foglio (Task 3) - Più flessibile con partial match
         if sheet:
-            query = query.filter(Product.source_sheet.ilike(sheet))
+            sheet_query = f"%{sheet}%"
+            query = query.filter(Product.source_sheet.ilike(sheet_query))
         
         # Ricerca per parole chiave (AND tra le parole)
         keywords = q.strip().split()
         
         if not keywords: 
-            # Se non ci sono keyword, mostriamo i primi 200 se c'è un filtro sheet, altrimenti 20
-            if only_pending.lower() == "true":
+            # Se c'è un filtro sheet, mostriamo TUTTI i prodotti di quella sezione (per controllo visivo)
+            # Altrimenti, mostriamo solo quelli senza immagini (only_pending)
+            if not sheet and only_pending.lower() == "true":
                 query = query.filter(or_(Product.matched_images_json == None, Product.matched_images_json == '[]', Product.matched_images_json == ''))
             
             limit = 200 if sheet else 20
-            return query.limit(limit).all()
+            return query.order_by(Product.id.asc()).limit(limit).all()
+
 
         
         conditions = []
@@ -1175,44 +1178,83 @@ async def mass_associate_by_row(request: Request, db: Session = Depends(get_db))
         return {"status": "info", "message": f"Nessuna immagine trovata {'nella sezione ' + target_folder if target_folder else ''}."}
         
     count = 0
-    grouped = {} # (row, context) -> [file_ids]
     for f in to_process:
-        key = (f['suggested_row'], f.get('folder_context', ''))
-        if key not in grouped: grouped[key] = []
-        grouped[key].append(f['id'])
+        # Proviamo a estrarre il seriale (SKU) dal nome se presente
+        # O usiamo il suggested_row già calcolato
+        fname = f['name'].upper()
+        f_id = f['id']
+        f_context = f.get('folder_context', '')
         
-    for (row_idx, context), fids in grouped.items():
-        # Cerchiamo i prodotti con quella riga
-        candidates = db.query(Product).filter(Product.original_sheets_row == row_idx).all()
+        # 1. TENTATIVO PER SERIALE (SKU)
+        # Recuperiamo tutti i prodotti che hanno uno SKU presente nel nome del file
+        # (Cerchiamo solo prodotti "Occhiali" se siamo in quel contesto per evitare falsi positivi)
+        sku_match_found = False
         
-        target_product = None
-        if len(candidates) == 1:
-            target_product = candidates[0]
-        elif len(candidates) > 1 and context:
-            # Disambiguazione per contesto cartella (es. "BORSE > DONNA" vs "BORSE DONNA")
-            norm_context = context.replace(" > ", " ").replace("/", " ").upper()
-            for p in candidates:
-                p_context = (p.source_sheet or p.category or "").replace("/", " ").upper()
-                if norm_context in p_context or p_context in norm_context or any(word in p_context for word in norm_context.split() if len(word) > 3):
-                    target_product = p
-                    break
-                    
-        if target_product:
-            # Associazione
-            current = []
-            try:
-                if target_product.matched_images_json:
-                    current = json.loads(target_product.matched_images_json)
-                    if not isinstance(current, list): current = []
-            except: current = []
+        # Ottimizzazione: cerchiamo nel DB prodotti che hanno uno SKU contenuto nel nome file
+        # Usiamo una logica più semplice: prendiamo i prodotti del contesto e verifichiamo
+        potential_products = db.query(Product)
+        if target_folder:
+            sheet_query = f"%{target_folder}%"
+            potential_products = potential_products.filter(Product.source_sheet.ilike(sheet_query))
+        
+        for p in potential_products.all():
+            # BLOCCO SICUREZZA: Se il prodotto è già Validato o Pubblicato, non tocchiamo le sue foto!
+            if p.status in [ProductStatus.Ready, ProductStatus.Published]:
+                continue
+
+            if p.sku and p.sku.upper() in fname:
+                # MATCH TROVATO PER SKU!
+                current = []
+                try:
+                    if p.matched_images_json:
+                        current = json.loads(p.matched_images_json)
+                except: pass
+                
+                if f_id not in current:
+                    current.append(f_id)
+                    p.matched_images_json = json.dumps(current)
+                    p.status = "MATCHED"
+                    count += 1
+                sku_match_found = True
+                break
+        
+        if sku_match_found: continue
+
+        # 2. TENTATIVO PER RIGA (Se SKU fallisce)
+        row_idx = f.get('suggested_row')
+        if row_idx:
+            candidates = db.query(Product).filter(Product.original_sheets_row == row_idx).all()
+            target_product = None
+            if len(candidates) == 1:
+                target_product = candidates[0]
+            elif len(candidates) > 1 and f_context:
+                norm_context = f_context.replace(" > ", " ").replace("/", " ").upper()
+                for p in candidates:
+                    p_context = (p.source_sheet or p.category or "").replace("/", " ").upper()
+                    if norm_context in p_context or p_context in norm_context:
+                        target_product = p
+                        break
             
-            new_list = list(set(current + fids))
-            target_product.matched_images_json = json.dumps(new_list)
-            target_product.status = "MATCHED"
-            count += len(fids)
-            
+            if target_product:
+                # BLOCCO SICUREZZA: Se il prodotto è già Validato o Pubblicato, non tocchiamo le sue foto!
+                if target_product.status in [ProductStatus.Ready, ProductStatus.Published]:
+                    continue
+
+                current = []
+                try:
+                    if target_product.matched_images_json:
+                        current = json.loads(target_product.matched_images_json)
+                except: pass
+                
+                if f_id not in current:
+                    current.append(f_id)
+                    target_product.matched_images_json = json.dumps(current)
+                    target_product.status = "MATCHED"
+                    count += 1
+
     db.commit()
-    return {"status": "success", "message": f"Associazione contestualizzata: {count} immagini collegate."}
+    return {"status": "success", "message": f"Auto-Match completato: {count} immagini collegate con successo."}
+
 
 @app.post("/api/darkroom/associate-bulk")
 async def darkroom_associate_bulk(request: Request, db: Session = Depends(get_db)):
@@ -2210,6 +2252,10 @@ async def sync_drive_images(db: Session = Depends(get_db)):
             if not target_inventory:
                 continue
 
+            # BLOCCO SICUREZZA: Se il prodotto è già Validato o Pubblicato, non tocchiamo nulla!
+            if p.status in [ProductStatus.Ready, ProductStatus.Published]:
+                continue
+
             # --- LOGICA DI MATCHING ---
             keywords = set()
             if p.brand: keywords.add(p.brand.lower())
@@ -2232,7 +2278,16 @@ async def sync_drive_images(db: Session = Depends(get_db)):
                 
                 # Regola: SKU match (Priorità Massima) o Euristica Brand/Keywords MOLTO STRETTA
                 is_sku_match = sku_lower and (sku_lower in name_norm)
-                if is_sku_match or (p.brand and p.brand.lower() in name_norm and match_count >= 3):
+                
+                # BLOCCO CROSS-BRAND: Se il file contiene un brand diverso, scartiamo.
+                other_brands = ["DIOR", "GUCCI", "PRADA", "VUITTON", "CELINE", "BOTTEGA", "SAINT LAURENT", "FENDI", "HERMES", "CHANEL"]
+                file_brand_conflict = False
+                for b in other_brands:
+                    if b.lower() in name_norm and p.brand and b.lower() not in p.brand.lower():
+                        file_brand_conflict = True
+                        break
+                
+                if not file_brand_conflict and (is_sku_match or (p.brand and p.brand.lower() in name_norm and match_count >= 3)):
                     valid_images.append({
                         "id": item["id"],
                         "name": item["name"],
